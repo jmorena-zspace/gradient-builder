@@ -35,7 +35,7 @@ jobs:
         run: npm run build
         env:
           NODE_ENV: production
-          VITE_BASE_PATH: /zc-sidepeek/
+          VITE_BASE_PATH: /gradient-builder/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
