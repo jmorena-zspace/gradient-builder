@@ -6,3 +6,73 @@ body {
   margin: 0;
   min-height: 100vh;
 }
+
+/* For animated background blobs with gelatinous deformation */
+@keyframes animate-blob-1 {
+  0%, 100% { 
+    transform: translate(0, 0) scale(1);
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+  }
+  25% { 
+    transform: translate(20vw, -30vh) scale(1.1);
+    border-radius: 60% 40% 50% 50% / 50% 60% 40% 50%;
+  }
+  50% { 
+    transform: translate(-10vw, -10vh) scale(0.9);
+    border-radius: 40% 60% 50% 50% / 60% 40% 50% 50%;
+  }
+  75% { 
+    transform: translate(30vw, 20vh) scale(1.2);
+    border-radius: 50% 50% 60% 40% / 40% 50% 50% 60%;
+  }
+}
+
+.animate-blob-1 { 
+  animation: animate-blob-1 var(--blob-1-speed, 30s) infinite alternate ease-in-out; 
+}
+
+@keyframes animate-blob-2 {
+  0%, 100% { 
+    transform: translate(0, 0) scale(1);
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+  }
+  25% { 
+    transform: translate(-25vw, 20vh) scale(1.2);
+    border-radius: 45% 55% 50% 50% / 55% 45% 50% 50%;
+  }
+  50% { 
+    transform: translate(15vw, 30vh) scale(0.8);
+    border-radius: 55% 45% 50% 50% / 45% 55% 50% 50%;
+  }
+  75% { 
+    transform: translate(-20vw, -25vh) scale(1.1);
+    border-radius: 50% 50% 45% 55% / 50% 50% 55% 45%;
+  }
+}
+
+.animate-blob-2 { 
+  animation: animate-blob-2 var(--blob-2-speed, 35s) infinite alternate ease-in-out; 
+}
+
+@keyframes animate-blob-3 {
+  0%, 100% { 
+    transform: translate(0, 0) scale(1);
+    border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%;
+  }
+  25% { 
+    transform: translate(10vw, 30vh) scale(1.1);
+    border-radius: 50% 50% 55% 45% / 45% 55% 50% 50%;
+  }
+  50% { 
+    transform: translate(-20vw, -20vh) scale(1);
+    border-radius: 50% 50% 45% 55% / 55% 45% 50% 50%;
+  }
+  75% { 
+    transform: translate(25vw, -15vh) scale(0.9);
+    border-radius: 55% 45% 50% 50% / 50% 50% 45% 55%;
+  }
+}
+
+.animate-blob-3 { 
+  animation: animate-blob-3 var(--blob-3-speed, 25s) infinite alternate ease-in-out; 
+}
