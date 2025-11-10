@@ -93,6 +93,9 @@ const tailwindColors = {
 };
 
 export default function GradientBuilder() {
+  // Number of blobs (2-10)
+  const [blobCount, setBlobCount] = useState(3);
+  
   // Each blob has a 3-step gradient: [from, via, to]
   const [blobColors, setBlobColors] = useState([
     ['emerald-400', 'emerald-600', 'emerald-400'],
@@ -111,6 +114,8 @@ export default function GradientBuilder() {
   
   // Modal state
   const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importCode, setImportCode] = useState('');
   const [copied, setCopied] = useState(false);
 
   // Update individual gradient color in a blob (from, via, or to)
@@ -132,31 +137,194 @@ export default function GradientBuilder() {
     setAnimationSpeeds(newSpeeds);
   };
 
+  // Generate blob positions dynamically
+  const generateBlobPositions = (count) => {
+    const positions = [];
+    const angleStep = (2 * Math.PI) / count;
+    
+    for (let i = 0; i < count; i++) {
+      const angle = i * angleStep;
+      // Distribute blobs in a circle, but vary the radius slightly
+      const radius = 0.3 + (i % 3) * 0.1; // Vary between 0.3 and 0.5
+      const x = 0.5 + radius * Math.cos(angle);
+      const y = 0.5 + radius * Math.sin(angle);
+      
+      // Convert to Tailwind position classes
+      let topClass = '';
+      let leftClass = '';
+      
+      if (y < 0.25) topClass = 'top-1/4';
+      else if (y < 0.5) topClass = 'top-1/3';
+      else if (y < 0.75) topClass = 'top-2/3';
+      else topClass = 'bottom-1/4';
+      
+      if (x < 0.25) leftClass = 'left-1/4';
+      else if (x < 0.5) leftClass = 'left-1/3';
+      else if (x < 0.75) leftClass = 'left-2/3';
+      else leftClass = 'right-1/4';
+      
+      positions.push({ position: `${topClass} ${leftClass}` });
+    }
+    return positions;
+  };
+
+  // Handle blob count change
+  const handleBlobCountChange = (newCount) => {
+    setBlobCount(newCount);
+    
+    // Adjust blobColors array
+    const newColors = [...blobColors];
+    while (newColors.length < newCount) {
+      // Default colors for new blobs
+      const defaultColors = [
+        ['emerald-400', 'emerald-600', 'emerald-400'],
+        ['cyan-400', 'blue-500', 'indigo-500'],
+        ['violet-400', 'fuchsia-500', 'violet-400'],
+        ['rose-400', 'pink-500', 'rose-400'],
+        ['amber-400', 'orange-500', 'amber-400'],
+        ['teal-400', 'cyan-500', 'teal-400'],
+        ['purple-400', 'indigo-500', 'purple-400'],
+        ['green-400', 'emerald-500', 'green-400'],
+        ['blue-400', 'sky-500', 'blue-400'],
+        ['red-400', 'pink-500', 'red-400']
+      ];
+      newColors.push(defaultColors[newColors.length % defaultColors.length]);
+    }
+    newColors.length = newCount;
+    setBlobColors(newColors);
+    
+    // Adjust animationSpeeds array
+    const newSpeeds = [...animationSpeeds];
+    while (newSpeeds.length < newCount) {
+      // Default speeds: vary between 20-40 seconds
+      newSpeeds.push(25 + (newSpeeds.length * 5) % 20);
+    }
+    newSpeeds.length = newCount;
+    setAnimationSpeeds(newSpeeds);
+  };
+
+  // Parse imported code and restore settings
+  const handleImport = () => {
+    try {
+      const code = importCode.trim();
+      
+      // Extract blob size
+      const sizeMatch = code.match(/width:\s*['"](\d+)rem['"]/);
+      if (sizeMatch) {
+        setBlobSize(parseInt(sizeMatch[1]));
+      }
+      
+      // Extract opacity
+      const opacityMatch = code.match(/opacity:\s*(\d+(?:\.\d+)?)/);
+      if (opacityMatch) {
+        setBlobOpacity(Math.round(parseFloat(opacityMatch[1]) * 100));
+      }
+      
+      // Extract blob colors and count
+      const blobMatches = code.matchAll(/background:\s*['"]radial-gradient\(circle,\s*([#\w]+)\s+0%,\s*([#\w]+)\s+50%,\s*([#\w]+)\s+100%\)['"]/g);
+      const extractedColors = [];
+      const extractedSpeeds = [];
+      
+      for (const match of blobMatches) {
+        const [, fromHex, viaHex, toHex] = match;
+        
+        // Convert hex to Tailwind color name (approximate)
+        const findTailwindColor = (hex) => {
+          const normalizedHex = hex.toLowerCase();
+          for (const [key, value] of Object.entries(tailwindColors)) {
+            if (value.toLowerCase() === normalizedHex) {
+              return key;
+            }
+          }
+          // If not found, return a default
+          return 'violet-500';
+        };
+        
+        extractedColors.push([
+          findTailwindColor(fromHex),
+          findTailwindColor(viaHex),
+          findTailwindColor(toHex)
+        ]);
+      }
+      
+      // Extract animation speeds from CSS variables or animation durations
+      const speedMatches = code.matchAll(/--blob-(\d+)-speed['"]:\s*['"](\d+)s['"]/g);
+      const speedMap = new Map();
+      for (const match of speedMatches) {
+        speedMap.set(parseInt(match[1]) - 1, parseInt(match[2]));
+      }
+      
+      // Also try to extract from CSS code if present
+      const cssSpeedMatches = code.matchAll(/animation:\s*animate-blob-\d+\s+(\d+)s/g);
+      let cssSpeedIndex = 0;
+      for (const match of cssSpeedMatches) {
+        if (!speedMap.has(cssSpeedIndex)) {
+          speedMap.set(cssSpeedIndex, parseInt(match[1]));
+        }
+        cssSpeedIndex++;
+      }
+      
+      if (extractedColors.length > 0) {
+        handleBlobCountChange(extractedColors.length);
+        setBlobColors(extractedColors);
+        
+        // Set speeds if found
+        if (speedMap.size > 0) {
+          const newSpeeds = [];
+          for (let i = 0; i < extractedColors.length; i++) {
+            newSpeeds.push(speedMap.get(i) || 30);
+          }
+          setAnimationSpeeds(newSpeeds);
+        }
+      }
+      
+      setShowImportModal(false);
+      setImportCode('');
+    } catch (error) {
+      alert('Error importing code. Please check the format and try again.');
+      console.error('Import error:', error);
+    }
+  };
+
   // Generate React code for AnimatedBackground component
   const generateCode = () => {
-    // Get hex colors for each blob
-    const blob1Colors = blobColors[0] || ['emerald-400', 'emerald-600', 'emerald-400'];
-    const blob2Colors = blobColors[1] || ['cyan-400', 'blue-500', 'indigo-500'];
-    const blob3Colors = blobColors[2] || ['violet-400', 'fuchsia-500', 'violet-400'];
-    
-    const blob1From = tailwindColors[blob1Colors[0]?.toLowerCase()] || '#34d399';
-    const blob1Via = tailwindColors[blob1Colors[1]?.toLowerCase()] || '#059669';
-    const blob1To = tailwindColors[blob1Colors[2]?.toLowerCase()] || '#34d399';
-    
-    const blob2From = tailwindColors[blob2Colors[0]?.toLowerCase()] || '#22d3ee';
-    const blob2Via = tailwindColors[blob2Colors[1]?.toLowerCase()] || '#3b82f6';
-    const blob2To = tailwindColors[blob2Colors[2]?.toLowerCase()] || '#6366f1';
-    
-    const blob3From = tailwindColors[blob3Colors[0]?.toLowerCase()] || '#a78bfa';
-    const blob3Via = tailwindColors[blob3Colors[1]?.toLowerCase()] || '#d946ef';
-    const blob3To = tailwindColors[blob3Colors[2]?.toLowerCase()] || '#a78bfa';
+    const blobElements = blobColors.map((gradient, index) => {
+      const config = blobConfigs[index] || blobConfigs[0];
+      const [from, via, to] = gradient;
+      
+      const fromHex = tailwindColors[from?.toLowerCase()] || '#34d399';
+      const viaHex = tailwindColors[via?.toLowerCase()] || '#059669';
+      const toHex = tailwindColors[to?.toLowerCase()] || '#34d399';
+      
+      const animationClass = `animate-blob-${(index % 3) + 1}`;
+      
+      return `        <div 
+          className="absolute ${config.position} -translate-x-1/2 -translate-y-1/2 blur-[120px] ${animationClass}"
+          style={{
+            width: '${blobSize}rem',
+            height: '${blobSize}rem',
+            background: 'radial-gradient(circle, ${fromHex} 0%, ${viaHex} 50%, ${toHex} 100%)',
+            opacity: ${blobOpacity / 100},
+            borderRadius: '50%'
+          }}
+        ></div>`;
+    }).join('\n');
+
+    const cssVariables = blobColors.map((_, index) => 
+      `          '--blob-${index + 1}-speed': '${animationSpeeds[index] || 30}s'`
+    ).join(',\n');
 
     return `import React from 'react';
 
 const AnimatedBackground = () => {
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-900">
-      <div className="relative h-full w-full">
+      <div 
+        className="relative h-full w-full"
+        style={{
+${cssVariables}
+        }}
+      >
         {/* Grain Overlay */}
         <div 
           className="absolute inset-0 z-20 mix-blend-soft-light" 
@@ -167,36 +335,7 @@ const AnimatedBackground = () => {
         ></div>
         
         {/* Blobs */}
-        <div 
-          className="absolute top-1/4 left-1/4 -translate-x-1/2 -translate-y-1/2 blur-[120px] animate-blob-1"
-          style={{
-            width: '${blobSize}rem',
-            height: '${blobSize}rem',
-            background: 'radial-gradient(circle, ${blob1From} 0%, ${blob1Via} 50%, ${blob1To} 100%)',
-            opacity: ${blobOpacity / 100},
-            borderRadius: '50%'
-          }}
-        ></div>
-        <div 
-          className="absolute bottom-1/4 right-1/4 -translate-x-1/2 -translate-y-1/2 blur-[120px] animate-blob-2"
-          style={{
-            width: '${blobSize}rem',
-            height: '${blobSize}rem',
-            background: 'radial-gradient(circle, ${blob2From} 0%, ${blob2Via} 50%, ${blob2To} 100%)',
-            opacity: ${blobOpacity / 100},
-            borderRadius: '50%'
-          }}
-        ></div>
-        <div 
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 blur-[120px] animate-blob-3"
-          style={{
-            width: '${blobSize}rem',
-            height: '${blobSize}rem',
-            background: 'radial-gradient(circle, ${blob3From} 0%, ${blob3Via} 50%, ${blob3To} 100%)',
-            opacity: ${blobOpacity / 100},
-            borderRadius: '50%'
-          }}
-        ></div>
+${blobElements}
       </div>
     </div>
   );
@@ -282,12 +421,8 @@ export default AnimatedBackground;`;
     URL.revokeObjectURL(url);
   };
 
-  // Blob configurations matching AnimatedBackground.jsx
-  const blobConfigs = [
-    { position: 'top-1/4 left-1/4' },
-    { position: 'bottom-1/4 right-1/4' },
-    { position: 'top-1/2 left-1/2' } // Changed to center to keep it in viewport
-  ];
+  // Generate blob configurations dynamically based on count
+  const blobConfigs = generateBlobPositions(blobCount);
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -296,9 +431,9 @@ export default AnimatedBackground;`;
         <div 
           className="relative h-full w-full"
           style={{
-            '--blob-1-speed': `${animationSpeeds[0] || 30}s`,
-            '--blob-2-speed': `${animationSpeeds[1] || 35}s`,
-            '--blob-3-speed': `${animationSpeeds[2] || 25}s`,
+            ...Object.fromEntries(
+              animationSpeeds.map((speed, index) => [`--blob-${index + 1}-speed`, `${speed || 30}s`])
+            )
           }}
         >
           {/* Grain Overlay - Made more prominent */}
@@ -311,18 +446,17 @@ export default AnimatedBackground;`;
           ></div>
           
           {/* Blobs - Matching AnimatedBackground.jsx structure */}
-          {blobColors.map((gradient, index) => {
+          {blobColors.slice(0, blobCount).map((gradient, index) => {
             const config = blobConfigs[index] || blobConfigs[0];
             const [from, via, to] = gradient;
             
             // Convert Tailwind colors to hex for inline gradient
-            const fromHex = tailwindColors[from.toLowerCase()] || '#34d399';
-            const viaHex = tailwindColors[via.toLowerCase()] || '#059669';
-            const toHex = tailwindColors[to.toLowerCase()] || '#34d399';
+            const fromHex = tailwindColors[from?.toLowerCase()] || '#34d399';
+            const viaHex = tailwindColors[via?.toLowerCase()] || '#059669';
+            const toHex = tailwindColors[to?.toLowerCase()] || '#34d399';
             
-            // Animation classes (mapped to avoid dynamic class issues)
-            const animationClasses = ['animate-blob-1', 'animate-blob-2', 'animate-blob-3'];
-            const animationClass = animationClasses[index] || 'animate-blob-1';
+            // Animation classes - cycle through available animations (1-3)
+            const animationClass = `animate-blob-${(index % 3) + 1}`;
             
             return (
               <div
@@ -350,6 +484,31 @@ export default AnimatedBackground;`;
               </h1>
 
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl space-y-6">
+            {/* Import Code */}
+            <div>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-300 mb-2"
+              >
+                Import React Code
+              </button>
+            </div>
+
+            {/* Blob Count */}
+            <div>
+              <label className="block text-white font-medium mb-2">
+                Number of Blobs: {blobCount}
+              </label>
+              <input
+                type="range"
+                min="2"
+                max="10"
+                value={blobCount}
+                onChange={(e) => handleBlobCountChange(parseInt(e.target.value))}
+                className="w-full"
+              />
+            </div>
+
             {/* Blob Size */}
             <div>
               <label className="block text-white font-medium mb-2">
@@ -371,7 +530,7 @@ export default AnimatedBackground;`;
                 Animation Speeds
               </label>
               <div className="space-y-3">
-                {animationSpeeds.map((speed, index) => (
+                {animationSpeeds.slice(0, blobCount).map((speed, index) => (
                   <div key={index}>
                     <label className="block text-white/70 text-xs mb-1">
                       Blob {index + 1} Speed: {speed}s
@@ -410,7 +569,7 @@ export default AnimatedBackground;`;
                 Blob Gradients (Tailwind)
               </label>
               <div className="space-y-4">
-                {blobColors.map((gradient, index) => {
+                {blobColors.slice(0, blobCount).map((gradient, index) => {
                   const gradientColors = Array.isArray(gradient) ? gradient : [gradient, gradient, gradient];
                   return (
                     <div key={index} className="space-y-2">
@@ -613,6 +772,61 @@ export default AnimatedBackground;`;
                   Download .css
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#1e1e1e] rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-xl font-semibold text-white">Import React Code</h2>
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportCode('');
+                }}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Import Content */}
+            <div className="flex-1 overflow-auto p-4 bg-[#1e1e1e]">
+              <p className="text-white/70 text-sm mb-4">
+                Paste the React code you previously generated. The tool will extract blob colors, sizes, speeds, and opacity.
+              </p>
+              <textarea
+                value={importCode}
+                onChange={(e) => setImportCode(e.target.value)}
+                placeholder="Paste your AnimatedBackground.jsx code here..."
+                className="w-full h-64 px-4 py-3 bg-[#252526] border border-gray-700 rounded-lg text-white font-mono text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end p-4 border-t border-gray-700 gap-3">
+              <button
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportCode('');
+                }}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all duration-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImport}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-300 flex items-center gap-2"
+              >
+                Import
+              </button>
             </div>
           </div>
         </div>
