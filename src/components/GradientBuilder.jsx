@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Tailwind color palette lookup table
 const tailwindColors = {
@@ -109,14 +109,41 @@ export default function GradientBuilder() {
   // Animation speeds in seconds (default: 30s, 35s, 25s)
   const [animationSpeeds, setAnimationSpeeds] = useState([30, 35, 25]);
   
+  // Blob positions and velocities (x, y, z in percentage/viewport units)
+  const [blobPositions, setBlobPositions] = useState([]);
+  const [blobVelocities, setBlobVelocities] = useState([]);
+  const [blobDeformations, setBlobDeformations] = useState([]); // For collision deformation
+  
   // Blob opacity (0-100, default 85)
   const [blobOpacity, setBlobOpacity] = useState(85);
+
+  // Global animation speeds (0-200%, default 100%)
+  const [globalMovementSpeed, setGlobalMovementSpeed] = useState(100);
+  const [globalScaleSpeed, setGlobalScaleSpeed] = useState(100);
+  
+  // Animation time for size oscillation (using ref to avoid dependency issues)
+  const animationTimeRef = useRef(0);
   
   // Modal state
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importCode, setImportCode] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // Gradient type: 'blobs' or 'mesh'
+  const [gradientType, setGradientType] = useState('blobs');
+
+  // PNG image state
+  const [importedImage, setImportedImage] = useState(null);
+  const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 }); // Percentage
+  const [imageSize, setImageSize] = useState({ width: 200, height: 200 }); // Pixels
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState({ width: 0, height: 0, x: 0, y: 0 });
+
+  // Mesh gradient points state
+  const [meshPoints, setMeshPoints] = useState([]);
 
   // Update individual gradient color in a blob (from, via, or to)
   const updateBlobGradientColor = (blobIndex, gradientIndex, color) => {
@@ -201,6 +228,184 @@ export default function GradientBuilder() {
     }
     newSpeeds.length = newCount;
     setAnimationSpeeds(newSpeeds);
+
+    // Initialize positions and velocities for new blobs
+    const newPositions = [...blobPositions];
+    const newVelocities = [...blobVelocities];
+    const newDeformations = [...blobDeformations];
+    
+    while (newPositions.length < newCount) {
+      const angle = (newPositions.length * 2 * Math.PI) / newCount;
+      const radius = 30;
+      newPositions.push({
+        x: 50 + radius * Math.cos(angle), // Percentage
+        y: 50 + radius * Math.sin(angle), // Percentage
+        z: 1 // Scale factor
+      });
+      newVelocities.push({
+        vx: (Math.random() - 0.5) * 0.2, // Viewport units per frame
+        vy: (Math.random() - 0.5) * 0.2,
+        vz: (Math.random() - 0.5) * 0.01
+      });
+      newDeformations.push({
+        borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
+        scale: 1
+      });
+    }
+    
+    newPositions.length = newCount;
+    newVelocities.length = newCount;
+    newDeformations.length = newCount;
+    
+    setBlobPositions(newPositions);
+    setBlobVelocities(newVelocities);
+    setBlobDeformations(newDeformations);
+  };
+
+  // Update blob velocity (x, y, z)
+  const updateBlobVelocity = (blobIndex, axis, value) => {
+    const newVelocities = [...blobVelocities];
+    if (!newVelocities[blobIndex]) {
+      newVelocities[blobIndex] = { vx: 0, vy: 0, vz: 0 };
+    }
+    newVelocities[blobIndex] = {
+      ...newVelocities[blobIndex],
+      [axis]: value
+    };
+    setBlobVelocities(newVelocities);
+  };
+
+  // Handle PNG image import
+  const handleImageImport = (event) => {
+    const file = event.target.files[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImportedImage(e.target.result);
+        // Center the image initially
+        setImagePosition({ x: 50, y: 50 });
+        setImageSize({ width: 200, height: 200 });
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset input so same file can be selected again
+    event.target.value = '';
+  };
+
+  // Handle image drag
+  const handleImageMouseDown = (e) => {
+    if (e.target.classList.contains('resize-handle')) return;
+    setIsDragging(true);
+    setDragStart({
+      x: e.clientX - (imagePosition.x * window.innerWidth / 100),
+      y: e.clientY - (imagePosition.y * window.innerHeight / 100)
+    });
+  };
+
+  // Handle image resize
+  const handleResizeMouseDown = (e) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({
+      width: imageSize.width,
+      height: imageSize.height,
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  // Mouse move handlers
+  const handleMouseMove = (e) => {
+    if (isDragging) {
+      const newX = ((e.clientX - dragStart.x) / window.innerWidth) * 100;
+      const newY = ((e.clientY - dragStart.y) / window.innerHeight) * 100;
+      setImagePosition({
+        x: Math.max(0, Math.min(100, newX)),
+        y: Math.max(0, Math.min(100, newY))
+      });
+    } else if (isResizing) {
+      const deltaX = e.clientX - resizeStart.x;
+      const deltaY = e.clientY - resizeStart.y;
+      const aspectRatio = resizeStart.width / resizeStart.height;
+      const newWidth = Math.max(50, Math.min(800, resizeStart.width + deltaX));
+      const newHeight = newWidth / aspectRatio;
+      setImageSize({
+        width: newWidth,
+        height: newHeight
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsResizing(false);
+  };
+
+  // Randomize blob animations
+  const randomizeBlobAnimations = () => {
+    const newSpeeds = animationSpeeds.map(() => Math.floor(Math.random() * 40) + 15); // 15-55 seconds
+    setAnimationSpeeds(newSpeeds);
+    
+    // Generate random keyframes for each blob animation
+    const generateRandomKeyframes = (index) => {
+      const keyframes = [];
+      const steps = [0, 25, 50, 75, 100];
+      
+      steps.forEach((step, i) => {
+        const translateX = (Math.random() - 0.5) * 60; // -30vw to 30vw
+        const translateY = (Math.random() - 0.5) * 60; // -30vh to 30vh
+        const scale = 0.7 + Math.random() * 0.6; // 0.7 to 1.3
+        const borderRadius1 = 40 + Math.random() * 20; // 40-60
+        const borderRadius2 = 40 + Math.random() * 20; // 40-60
+        const borderRadius3 = 40 + Math.random() * 20; // 40-60
+        const borderRadius4 = 40 + Math.random() * 20; // 40-60
+        
+        keyframes.push({
+          step,
+          transform: `translate(${translateX}vw, ${translateY}vh) scale(${scale})`,
+          borderRadius: `${borderRadius1}% ${borderRadius2}% ${borderRadius3}% ${borderRadius4}% / ${borderRadius3}% ${borderRadius4}% ${borderRadius1}% ${borderRadius2}%`
+        });
+      });
+      
+      return keyframes;
+    };
+
+    // Update CSS animations dynamically
+    const styleSheet = document.styleSheets[0];
+    const maxBlobs = Math.max(blobCount, 3);
+    
+    for (let i = 1; i <= maxBlobs; i++) {
+      const animationName = `animate-blob-${i}`;
+      const keyframes = generateRandomKeyframes(i);
+      
+      // Remove existing keyframes if they exist
+      try {
+        const existingRule = Array.from(styleSheet.cssRules).find(
+          rule => rule.name === animationName
+        );
+        if (existingRule) {
+          styleSheet.deleteRule(Array.from(styleSheet.cssRules).indexOf(existingRule));
+        }
+      } catch (e) {
+        // Rule might not exist, continue
+      }
+      
+      // Create new keyframes
+      const keyframeRule = `@keyframes ${animationName} {
+        ${keyframes.map(kf => 
+          `${kf.step}% { 
+            transform: ${kf.transform}; 
+            border-radius: ${kf.borderRadius}; 
+          }`
+        ).join('\n        ')}
+      }`;
+      
+      try {
+        styleSheet.insertRule(keyframeRule, styleSheet.cssRules.length);
+      } catch (e) {
+        console.error('Error inserting keyframes:', e);
+      }
+    }
   };
 
   // Parse imported code and restore settings
@@ -424,6 +629,231 @@ export default AnimatedBackground;`;
   // Generate blob configurations dynamically based on count
   const blobConfigs = generateBlobPositions(blobCount);
 
+  // Initialize mesh points - create control points for each blob color
+  useEffect(() => {
+    if (gradientType === 'mesh') {
+      const points = [];
+      // Create multiple points per blob color for smoother mesh
+      const pointsPerColor = 3;
+      for (let colorIndex = 0; colorIndex < blobCount; colorIndex++) {
+        for (let i = 0; i < pointsPerColor; i++) {
+          // Distribute points more evenly but with some randomness
+          const angle = (colorIndex * (2 * Math.PI / blobCount)) + (i * (2 * Math.PI / (blobCount * pointsPerColor)));
+          const radius = 30 + Math.random() * 20; // 30-50% from center
+          const x = 50 + radius * Math.cos(angle) + (Math.random() - 0.5) * 10;
+          const y = 50 + radius * Math.sin(angle) + (Math.random() - 0.5) * 10;
+          
+          points.push({
+            x: Math.max(5, Math.min(95, x)),
+            y: Math.max(5, Math.min(95, y)),
+            colorIndex: colorIndex,
+            vx: (Math.random() - 0.5) * 0.3, // Slower, smoother movement
+            vy: (Math.random() - 0.5) * 0.3
+          });
+        }
+      }
+      setMeshPoints(points);
+    }
+  }, [gradientType, blobCount]);
+
+  // Initialize blob positions and velocities on mount
+  useEffect(() => {
+    if (blobPositions.length === 0 && blobCount > 0) {
+      // Initialize positions and velocities
+      const newPositions = [];
+      const newVelocities = [];
+      const newDeformations = [];
+      
+      for (let i = 0; i < blobCount; i++) {
+        const angle = (i * 2 * Math.PI) / blobCount;
+        const radius = 30;
+        newPositions.push({
+          x: 50 + radius * Math.cos(angle),
+          y: 50 + radius * Math.sin(angle),
+          z: 1
+        });
+        newVelocities.push({
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
+          vz: (Math.random() - 0.5) * 0.01
+        });
+        newDeformations.push({
+          borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
+          scale: 1
+        });
+      }
+      
+      setBlobPositions(newPositions);
+      setBlobVelocities(newVelocities);
+      setBlobDeformations(newDeformations);
+    }
+  }, [blobCount]);
+
+  // Animate blobs with collision detection and deformation
+  useEffect(() => {
+    if (gradientType !== 'blobs' || blobPositions.length === 0) return;
+
+    const animate = () => {
+      // Update animation time for size oscillation
+      animationTimeRef.current += (globalScaleSpeed / 100) * 0.01;
+      
+      setBlobPositions(prevPositions => {
+        const newPositions = prevPositions.map(p => ({ ...p }));
+        
+        setBlobVelocities(prevVelocities => {
+          const newVelocities = prevVelocities.map(v => ({ ...v }));
+          
+          setBlobDeformations(prevDeformations => {
+            const newDeformations = prevDeformations.map(d => ({
+              borderRadius: d.borderRadius,
+              scale: Math.max(0.95, d.scale * 0.98) // Gradually return to normal
+            }));
+
+            const blobRadius = blobSize * 0.5; // Approximate radius in rem
+            const movementMultiplier = globalMovementSpeed / 100;
+
+            // Calculate size oscillation (80% to 110% of base size)
+            const baseSize = 1.0; // Base scale factor
+            const sizeRange = 0.3; // 0.3 = 30% range (110% - 80% = 30%)
+            const sizeOffset = 0.1; // Offset to center at 95% (80% + 15%)
+
+            // Update positions and check collisions
+            for (let i = 0; i < newPositions.length; i++) {
+              // Update position with global movement speed multiplier
+              newPositions[i].x += newVelocities[i].vx * movementMultiplier;
+              newPositions[i].y += newVelocities[i].vy * movementMultiplier;
+              
+              // Update z scale with animation (oscillate between 0.8 and 1.1)
+              // Each blob has a slight phase offset for variety
+              const phaseOffset = (i * Math.PI * 2) / newPositions.length;
+              const blobAnimatedSize = baseSize - sizeOffset + (Math.sin(animationTimeRef.current + phaseOffset) * sizeRange / 2) + (sizeRange / 2);
+              newPositions[i].z = Math.max(0.5, Math.min(1.5, blobAnimatedSize));
+
+              // Check edge collisions
+              const edgeMargin = 10; // Percentage margin
+              if (newPositions[i].x <= edgeMargin || newPositions[i].x >= 100 - edgeMargin) {
+                newVelocities[i].vx = -newVelocities[i].vx;
+                newPositions[i].x = Math.max(edgeMargin, Math.min(100 - edgeMargin, newPositions[i].x));
+                // Deform on edge collision
+                newDeformations[i] = {
+                  borderRadius: '60% 40% 50% 50% / 50% 60% 40% 50%',
+                  scale: 0.9
+                };
+              }
+              if (newPositions[i].y <= edgeMargin || newPositions[i].y >= 100 - edgeMargin) {
+                newVelocities[i].vy = -newVelocities[i].vy;
+                newPositions[i].y = Math.max(edgeMargin, Math.min(100 - edgeMargin, newPositions[i].y));
+                // Deform on edge collision
+                newDeformations[i] = {
+                  borderRadius: '50% 50% 60% 40% / 40% 50% 50% 60%',
+                  scale: 0.9
+                };
+              }
+
+              // Check blob-to-blob collisions
+              for (let j = i + 1; j < newPositions.length; j++) {
+                const dx = newPositions[i].x - newPositions[j].x;
+                const dy = newPositions[i].y - newPositions[j].y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const minDistance = blobRadius * 0.3; // Collision threshold
+
+                if (distance < minDistance && distance > 0) {
+                  // Collision detected - bounce
+                  const angle = Math.atan2(dy, dx);
+                  const speed1 = Math.sqrt(newVelocities[i].vx ** 2 + newVelocities[i].vy ** 2);
+                  const speed2 = Math.sqrt(newVelocities[j].vx ** 2 + newVelocities[j].vy ** 2);
+
+                  // Simple elastic collision
+                  newVelocities[i].vx = Math.cos(angle) * speed1 * 0.8;
+                  newVelocities[i].vy = Math.sin(angle) * speed1 * 0.8;
+                  newVelocities[j].vx = -Math.cos(angle) * speed2 * 0.8;
+                  newVelocities[j].vy = -Math.sin(angle) * speed2 * 0.8;
+
+                  // Deform both blobs
+                  const deformation = {
+                    borderRadius: '45% 55% 50% 50% / 55% 45% 50% 50%',
+                    scale: 0.85
+                  };
+                  newDeformations[i] = deformation;
+                  newDeformations[j] = deformation;
+
+                  // Separate blobs
+                  const separation = (minDistance - distance) / 2;
+                  newPositions[i].x += Math.cos(angle) * separation;
+                  newPositions[i].y += Math.sin(angle) * separation;
+                  newPositions[j].x -= Math.cos(angle) * separation;
+                  newPositions[j].y -= Math.sin(angle) * separation;
+                }
+              }
+            }
+
+            return newDeformations;
+          });
+          
+          return newVelocities;
+        });
+        
+        return newPositions;
+      });
+    };
+
+    const interval = setInterval(animate, 16); // ~60fps
+    return () => clearInterval(interval);
+  }, [gradientType, blobPositions.length, blobSize, blobVelocities]);
+
+  // Animate mesh points
+  useEffect(() => {
+    if (gradientType !== 'mesh') return;
+
+    const animate = () => {
+      setMeshPoints(prevPoints => 
+        prevPoints.map(point => {
+          let newX = point.x + point.vx;
+          let newY = point.y + point.vy;
+          let newVx = point.vx;
+          let newVy = point.vy;
+
+          // Bounce off edges and reverse velocity
+          if (newX <= 0 || newX >= 100) {
+            newVx = -newVx;
+            newX = Math.max(0, Math.min(100, newX));
+          }
+          if (newY <= 0 || newY >= 100) {
+            newVy = -newVy;
+            newY = Math.max(0, Math.min(100, newY));
+          }
+
+          return {
+            ...point,
+            x: newX,
+            y: newY,
+            vx: newVx,
+            vy: newVy
+          };
+        })
+      );
+    };
+
+    const interval = setInterval(animate, 50); // Update every 50ms
+    return () => clearInterval(interval);
+  }, [gradientType, meshPoints.length]);
+
+  // Add event listeners for drag and resize
+  useEffect(() => {
+    if (isDragging || isResizing) {
+      const handleMove = (e) => handleMouseMove(e);
+      const handleUp = () => handleMouseUp();
+      
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleUp);
+      
+      return () => {
+        window.removeEventListener('mousemove', handleMove);
+        window.removeEventListener('mouseup', handleUp);
+      };
+    }
+  }, [isDragging, isResizing, dragStart, resizeStart, imagePosition, imageSize]);
+
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Animated Background - matching AnimatedBackground.jsx */}
@@ -445,36 +875,110 @@ export default AnimatedBackground;`;
             }}
           ></div>
           
-          {/* Blobs - Matching AnimatedBackground.jsx structure */}
-          {blobColors.slice(0, blobCount).map((gradient, index) => {
-            const config = blobConfigs[index] || blobConfigs[0];
-            const [from, via, to] = gradient;
-            
-            // Convert Tailwind colors to hex for inline gradient
-            const fromHex = tailwindColors[from?.toLowerCase()] || '#34d399';
-            const viaHex = tailwindColors[via?.toLowerCase()] || '#059669';
-            const toHex = tailwindColors[to?.toLowerCase()] || '#34d399';
-            
-            // Animation classes - cycle through available animations (1-3)
-            const animationClass = `animate-blob-${(index % 3) + 1}`;
-            
-            return (
-              <div
-                key={index}
-                className={`absolute ${config.position} -translate-x-1/2 -translate-y-1/2 blur-[120px] ${animationClass}`}
-                style={{
-                  width: `${blobSize}rem`,
-                  height: `${blobSize}rem`,
-                  background: `radial-gradient(circle, ${fromHex} 0%, ${viaHex} 50%, ${toHex} 100%)`,
-                  opacity: blobOpacity / 100,
-                  // Start with circular shape, animation will deform it
-                  borderRadius: '50%'
-                }}
-              ></div>
-            );
-          })}
+          {/* Blobs or Mesh Gradient */}
+          {gradientType === 'blobs' ? (
+            // Blobs - JavaScript-controlled with collision detection
+            blobColors.slice(0, blobCount).map((gradient, index) => {
+              const [from, via, to] = gradient;
+              
+              // Convert Tailwind colors to hex for inline gradient
+              const fromHex = tailwindColors[from?.toLowerCase()] || '#34d399';
+              const viaHex = tailwindColors[via?.toLowerCase()] || '#059669';
+              const toHex = tailwindColors[to?.toLowerCase()] || '#34d399';
+              
+              const position = blobPositions[index] || { x: 50, y: 50, z: 1 };
+              const deformation = blobDeformations[index] || { borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%', scale: 1 };
+              
+              return (
+                <div
+                  key={index}
+                  className="absolute blur-[120px]"
+                  style={{
+                    left: `${position.x}%`,
+                    top: `${position.y}%`,
+                    transform: `translate(-50%, -50%) scale(${position.z * deformation.scale})`,
+                    width: `${blobSize}rem`,
+                    height: `${blobSize}rem`,
+                    background: `radial-gradient(circle, ${fromHex} 0%, ${viaHex} 50%, ${toHex} 100%)`,
+                    opacity: blobOpacity / 100,
+                    borderRadius: deformation.borderRadius,
+                    transition: 'border-radius 0.1s ease-out, transform 0.1s ease-out'
+                  }}
+                ></div>
+              );
+            })
+          ) : (
+            // Mesh Gradient - Using large blurred radial gradients for smooth organic look
+            <div className="absolute inset-0 w-full h-full" style={{ opacity: blobOpacity / 100 }}>
+              {meshPoints.map((point, index) => {
+                const gradient = blobColors[point.colorIndex % blobCount] || blobColors[0];
+                const [from, via, to] = gradient;
+                const fromHex = tailwindColors[from?.toLowerCase()] || '#34d399';
+                const viaHex = tailwindColors[via?.toLowerCase()] || '#059669';
+                const toHex = tailwindColors[to?.toLowerCase()] || '#34d399';
+                
+                // Large size for smooth blending - use rem units scaled by blobSize
+                const size = blobSize * 2; // Make mesh gradients larger for better blending
+                
+                return (
+                  <div
+                    key={index}
+                    className="absolute rounded-full"
+                    style={{
+                      left: `${point.x}%`,
+                      top: `${point.y}%`,
+                      transform: 'translate(-50%, -50%)',
+                      width: `${size}rem`,
+                      height: `${size}rem`,
+                      background: `radial-gradient(circle, ${fromHex} 0%, ${viaHex} 30%, ${toHex} 60%, transparent 85%)`,
+                      filter: 'blur(120px)',
+                      mixBlendMode: 'normal',
+                      opacity: 0.8,
+                      pointerEvents: 'none',
+                      willChange: 'transform'
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Imported PNG Image Overlay */}
+      {importedImage && (
+        <div
+          className="fixed z-30 cursor-move"
+          style={{
+            left: `${imagePosition.x}%`,
+            top: `${imagePosition.y}%`,
+            transform: 'translate(-50%, -50%)',
+            width: `${imageSize.width}px`,
+            height: `${imageSize.height}px`,
+          }}
+          onMouseDown={handleImageMouseDown}
+        >
+          <img
+            src={importedImage}
+            alt="Imported logo"
+            className="w-full h-full object-contain pointer-events-none select-none"
+            draggable={false}
+          />
+          {/* Resize handle */}
+          <div
+            className="absolute bottom-0 right-0 w-4 h-4 bg-blue-500 cursor-nwse-resize rounded-full border-2 border-white"
+            onMouseDown={handleResizeMouseDown}
+            style={{ transform: 'translate(50%, 50%)' }}
+          />
+          {/* Remove button */}
+          <button
+            onClick={() => setImportedImage(null)}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs font-bold"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
           {/* Controls Panel */}
           <div className="relative z-10 min-h-screen flex">
@@ -484,14 +988,52 @@ export default AnimatedBackground;`;
               </h1>
 
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl space-y-6">
-            {/* Import Code */}
+            {/* Gradient Type Toggle */}
             <div>
+              <label className="block text-white font-medium mb-3">
+                Gradient Type
+              </label>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setGradientType('blobs')}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                    gradientType === 'blobs'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  Blobs
+                </button>
+                <button
+                  onClick={() => setGradientType('mesh')}
+                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                    gradientType === 'mesh'
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  Mesh
+                </button>
+              </div>
+            </div>
+
+            {/* Import Code */}
+            <div className="space-y-2">
               <button
                 onClick={() => setShowImportModal(true)}
-                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-300 mb-2"
+                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-300"
               >
                 Import React Code
               </button>
+              <label className="block w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-all duration-300 text-center cursor-pointer">
+                Import PNG Logo
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageImport}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             {/* Blob Count */}
@@ -524,25 +1066,93 @@ export default AnimatedBackground;`;
               />
             </div>
 
-            {/* Animation Speeds */}
+            {/* Global Animation Speeds */}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-white font-medium mb-2">
+                  Global Movement Speed: {globalMovementSpeed}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={globalMovementSpeed}
+                  onChange={(e) => setGlobalMovementSpeed(parseInt(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-white/60 text-xs mt-1">Controls how fast blobs move</p>
+              </div>
+              <div>
+                <label className="block text-white font-medium mb-2">
+                  Global Scale Animation Speed: {globalScaleSpeed}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={globalScaleSpeed}
+                  onChange={(e) => setGlobalScaleSpeed(parseInt(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-white/60 text-xs mt-1">Controls how fast blobs pulse (80%-110% size)</p>
+              </div>
+            </div>
+
+            {/* Blob Movement Controls (X, Y, Z) */}
             <div>
               <label className="block text-white font-medium mb-3">
-                Animation Speeds
+                Blob Movement Controls
               </label>
-              <div className="space-y-3">
-                {animationSpeeds.slice(0, blobCount).map((speed, index) => (
-                  <div key={index}>
-                    <label className="block text-white/70 text-xs mb-1">
-                      Blob {index + 1} Speed: {speed}s
+              <div className="space-y-4">
+                {blobVelocities.slice(0, blobCount).map((velocity, index) => (
+                  <div key={index} className="bg-white/5 rounded-lg p-3 space-y-2">
+                    <label className="block text-white/90 text-sm font-medium mb-2">
+                      Blob {index + 1}
                     </label>
-                    <input
-                      type="range"
-                      min="5"
-                      max="60"
-                      value={speed}
-                      onChange={(e) => updateAnimationSpeed(index, parseInt(e.target.value))}
-                      className="w-full"
-                    />
+                    <div className="space-y-2">
+                      <div>
+                        <label className="block text-white/70 text-xs mb-1">
+                          X Velocity: {velocity.vx?.toFixed(2) || 0}
+                        </label>
+                        <input
+                          type="range"
+                          min="-1"
+                          max="1"
+                          step="0.01"
+                          value={velocity.vx || 0}
+                          onChange={(e) => updateBlobVelocity(index, 'vx', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white/70 text-xs mb-1">
+                          Y Velocity: {velocity.vy?.toFixed(2) || 0}
+                        </label>
+                        <input
+                          type="range"
+                          min="-1"
+                          max="1"
+                          step="0.01"
+                          value={velocity.vy || 0}
+                          onChange={(e) => updateBlobVelocity(index, 'vy', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-white/70 text-xs mb-1">
+                          Z Velocity (Scale): {velocity.vz?.toFixed(3) || 0}
+                        </label>
+                        <input
+                          type="range"
+                          min="-0.05"
+                          max="0.05"
+                          step="0.001"
+                          value={velocity.vz || 0}
+                          onChange={(e) => updateBlobVelocity(index, 'vz', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -561,6 +1171,16 @@ export default AnimatedBackground;`;
                 onChange={(e) => setBlobOpacity(parseInt(e.target.value))}
                 className="w-full"
               />
+            </div>
+
+            {/* Randomize Animations */}
+            <div>
+              <button
+                onClick={randomizeBlobAnimations}
+                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-all duration-300"
+              >
+                Randomize Blob Movements
+              </button>
             </div>
 
             {/* Blob Colors - 3-step gradients */}
