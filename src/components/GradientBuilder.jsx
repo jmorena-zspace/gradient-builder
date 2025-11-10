@@ -342,12 +342,12 @@ export default AnimatedBackground;`;
         </div>
       </div>
 
-      {/* Controls Panel */}
-      <div className="relative z-10 min-h-screen flex">
-        <div className="w-96 p-6 overflow-y-auto bg-white/5 backdrop-blur-sm border-r border-white/10">
-          <h1 className="text-3xl font-bold text-white mb-6 drop-shadow-lg">
-            Gradient Builder
-          </h1>
+          {/* Controls Panel */}
+          <div className="relative z-10 min-h-screen flex">
+            <div className="w-96 p-6 overflow-y-auto bg-white/5 backdrop-blur-sm border-r border-white/10">
+              <h1 className="text-3xl font-bold text-white mb-6 drop-shadow-lg">
+                Gradient Builder
+              </h1>
 
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl space-y-6">
             {/* Blob Size */}
