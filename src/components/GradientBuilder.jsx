@@ -137,6 +137,7 @@ export default function GradientBuilder() {
   const [importedImage, setImportedImage] = useState(null);
   const [imagePosition, setImagePosition] = useState({ x: 50, y: 50 }); // Percentage
   const [imageSize, setImageSize] = useState({ width: 200, height: 200 }); // Pixels
+  const [originalImageSize, setOriginalImageSize] = useState({ width: 200, height: 200 }); // Original size for 100% reference
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -477,10 +478,19 @@ export default function GradientBuilder() {
     if (file && file.type.startsWith('image/')) {
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImportedImage(e.target.result);
-        // Center the image initially
-        setImagePosition({ x: 50, y: 50 });
-        setImageSize({ width: 200, height: 200 });
+        const img = new Image();
+        img.onload = () => {
+          // Set image to 100% of original size
+          const originalWidth = img.naturalWidth;
+          const originalHeight = img.naturalHeight;
+          setOriginalImageSize({ width: originalWidth, height: originalHeight });
+          setImportedImage(e.target.result);
+          // Center the image initially
+          setImagePosition({ x: 50, y: 50 });
+          // Start at 100% of original size
+          setImageSize({ width: originalWidth, height: originalHeight });
+        };
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     }
@@ -523,7 +533,9 @@ export default function GradientBuilder() {
       const deltaX = e.clientX - resizeStart.x;
       const deltaY = e.clientY - resizeStart.y;
       const aspectRatio = resizeStart.width / resizeStart.height;
-      const newWidth = Math.max(50, Math.min(800, resizeStart.width + deltaX));
+      // Allow resizing from 50px minimum to 250% of original size
+      const maxWidth = originalImageSize.width * 2.5;
+      const newWidth = Math.max(50, Math.min(maxWidth, resizeStart.width + deltaX));
       const newHeight = newWidth / aspectRatio;
       setImageSize({
         width: newWidth,
