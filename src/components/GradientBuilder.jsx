@@ -145,6 +145,44 @@ export default function GradientBuilder() {
   // Mesh gradient points state
   const [meshPoints, setMeshPoints] = useState([]);
 
+  // UI visibility state
+  const [uiVisible, setUiVisible] = useState(true);
+
+  // Background color state
+  const [backgroundColor, setBackgroundColor] = useState('slate-900');
+
+  // Static vs animated blobs
+  const [blobsAnimated, setBlobsAnimated] = useState(true);
+
+  // Initial spawn positions for each blob (x, y in -100% to 100% format)
+  const [blobInitialPositions, setBlobInitialPositions] = useState([]);
+
+  // Starting and final sizes for each blob
+  const [blobStartSizes, setBlobStartSizes] = useState([]);
+  const [blobFinalSizes, setBlobFinalSizes] = useState([]);
+
+  // Accordion state for each blob
+  const [expandedBlobs, setExpandedBlobs] = useState({});
+
+  // Color picker state
+  const [colorPickerOpen, setColorPickerOpen] = useState({});
+  const [colorPickerType, setColorPickerType] = useState(null); // 'from', 'via', 'to', or 'background'
+  const [colorPickerBlobIndex, setColorPickerBlobIndex] = useState(null);
+
+  // Global animation duration (in seconds)
+  const [globalAnimationDuration, setGlobalAnimationDuration] = useState(30);
+
+  // Global animation speed in milliseconds (how long to go from 0 to 100%)
+  const [globalAnimationSpeedMs, setGlobalAnimationSpeedMs] = useState(3000);
+
+  // Animate checkbox for static mode (animates size from 0 to set size)
+  const [animateSize, setAnimateSize] = useState(true);
+  const [sizeAnimationTimeMs, setSizeAnimationTimeMs] = useState(3000);
+  const [sizeAnimationStartTime, setSizeAnimationStartTime] = useState(null);
+  
+  // Staggered animation mode (true = staggered, false = simultaneous)
+  const [staggeredAnimation, setStaggeredAnimation] = useState(true);
+
   // Update individual gradient color in a blob (from, via, or to)
   const updateBlobGradientColor = (blobIndex, gradientIndex, color) => {
     const newColors = [...blobColors];
@@ -163,6 +201,150 @@ export default function GradientBuilder() {
     newSpeeds[blobIndex] = speed;
     setAnimationSpeeds(newSpeeds);
   };
+
+  // Toggle accordion for a blob
+  const toggleBlobAccordion = (blobIndex) => {
+    setExpandedBlobs(prev => ({
+      ...prev,
+      [blobIndex]: !prev[blobIndex]
+    }));
+  };
+
+  // Update initial position for a blob
+  const updateBlobInitialPosition = (blobIndex, axis, value) => {
+    const newPositions = [...blobInitialPositions];
+    if (!newPositions[blobIndex]) {
+      newPositions[blobIndex] = { x: 0, y: 0 };
+    }
+    newPositions[blobIndex] = {
+      ...newPositions[blobIndex],
+      [axis]: value
+    };
+    setBlobInitialPositions(newPositions);
+    
+    // Update actual blob position
+    const newBlobPositions = [...blobPositions];
+    if (!newBlobPositions[blobIndex]) {
+      newBlobPositions[blobIndex] = { x: 50, y: 50, z: 1 };
+    }
+    // Convert from -100% to 100% format to 0% to 100% format
+    newBlobPositions[blobIndex] = {
+      ...newBlobPositions[blobIndex],
+      [axis]: 50 + (value / 100) * 50 // Convert -100 to 100 range to 0 to 100 range
+    };
+    setBlobPositions(newBlobPositions);
+  };
+
+  // Update blob start size
+  const updateBlobStartSize = (blobIndex, size) => {
+    const newSizes = [...blobStartSizes];
+    newSizes[blobIndex] = size;
+    setBlobStartSizes(newSizes);
+  };
+
+  // Update blob final size
+  const updateBlobFinalSize = (blobIndex, size) => {
+    const newSizes = [...blobFinalSizes];
+    newSizes[blobIndex] = size;
+    setBlobFinalSizes(newSizes);
+  };
+
+  // Open color picker
+  const openColorPicker = (blobIndex, type) => {
+    setColorPickerBlobIndex(blobIndex);
+    setColorPickerType(type);
+    setColorPickerOpen({ [`${blobIndex}-${type}`]: true });
+  };
+
+  // Close color picker
+  const closeColorPicker = () => {
+    setColorPickerOpen({});
+    setColorPickerType(null);
+    setColorPickerBlobIndex(null);
+  };
+
+  // Select color from picker
+  const selectColor = (color) => {
+    if (colorPickerType === 'background') {
+      setBackgroundColor(color);
+    } else if (colorPickerBlobIndex !== null && colorPickerType) {
+      const gradientIndex = colorPickerType === 'from' ? 0 : colorPickerType === 'via' ? 1 : 2;
+      updateBlobGradientColor(colorPickerBlobIndex, gradientIndex, color);
+    }
+    closeColorPicker();
+  };
+
+  // Reset animation
+  const resetAnimation = () => {
+    animationTimeRef.current = 0;
+    // Reset blob positions to initial positions
+    const newPositions = blobInitialPositions.map((initialPos, index) => ({
+      x: 50 + (initialPos.x / 100) * 50,
+      y: 50 + (initialPos.y / 100) * 50,
+      z: 1
+    }));
+    setBlobPositions(newPositions);
+  };
+
+  // Check if background color is light (for dark mode UI)
+  const isLightColor = (hex) => {
+    // Convert hex to RGB
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    
+    // Calculate relative luminance
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    
+    // Consider colors with luminance > 0.5 as light
+    return luminance > 0.5;
+  };
+
+  const bgColorHex = tailwindColors[backgroundColor] || '#0f172a';
+  const isLightBackground = isLightColor(bgColorHex);
+
+  // Helper function to get text color class based on background
+  const getTextColor = (opacity = 1) => {
+    if (isLightBackground) {
+      return opacity === 1 ? 'text-gray-100' : opacity === 0.7 ? 'text-gray-300' : opacity === 0.6 ? 'text-gray-400' : 'text-gray-200';
+    }
+    return opacity === 1 ? 'text-white' : opacity === 0.7 ? 'text-white/70' : opacity === 0.6 ? 'text-white/60' : 'text-white/90';
+  };
+
+  // Helper function to get background color class
+  const getBgColor = () => {
+    if (isLightBackground) {
+      return 'bg-gray-800/90';
+    }
+    return 'bg-white/10';
+  };
+
+  // Helper function for border colors
+  const getBorderColor = () => {
+    if (isLightBackground) {
+      return 'border-gray-700';
+    }
+    return 'border-white/20';
+  };
+
+  // Update global animation duration for all blobs
+  const updateGlobalAnimationDuration = (duration) => {
+    setGlobalAnimationDuration(duration);
+    setAnimationSpeeds(new Array(blobCount).fill(duration));
+  };
+
+  // Group colors by base name (e.g., 'emerald', 'blue')
+  const groupedColors = Object.keys(tailwindColors).reduce((acc, color) => {
+    const baseName = color.split('-')[0];
+    if (!acc[baseName]) {
+      acc[baseName] = [];
+    }
+    acc[baseName].push(color);
+    return acc;
+  }, {});
+
+  // Sort color groups
+  const colorGroups = Object.keys(groupedColors).sort();
 
   // Generate blob positions dynamically
   const generateBlobPositions = (count) => {
@@ -233,6 +415,9 @@ export default function GradientBuilder() {
     const newPositions = [...blobPositions];
     const newVelocities = [...blobVelocities];
     const newDeformations = [...blobDeformations];
+    const newInitialPositions = [...blobInitialPositions];
+    const newStartSizes = [...blobStartSizes];
+    const newFinalSizes = [...blobFinalSizes];
     
     while (newPositions.length < newCount) {
       const angle = (newPositions.length * 2 * Math.PI) / newCount;
@@ -251,15 +436,26 @@ export default function GradientBuilder() {
         borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
         scale: 1
       });
+      // Initialize initial positions (0 = center)
+      newInitialPositions.push({ x: 0, y: 0 });
+      // Initialize sizes (default to current blobSize)
+      newStartSizes.push(blobSize);
+      newFinalSizes.push(blobSize);
     }
     
     newPositions.length = newCount;
     newVelocities.length = newCount;
     newDeformations.length = newCount;
+    newInitialPositions.length = newCount;
+    newStartSizes.length = newCount;
+    newFinalSizes.length = newCount;
     
     setBlobPositions(newPositions);
     setBlobVelocities(newVelocities);
     setBlobDeformations(newDeformations);
+    setBlobInitialPositions(newInitialPositions);
+    setBlobStartSizes(newStartSizes);
+    setBlobFinalSizes(newFinalSizes);
   };
 
   // Update blob velocity (x, y, z)
@@ -519,11 +715,13 @@ export default function GradientBuilder() {
       `          '--blob-${index + 1}-speed': '${animationSpeeds[index] || 30}s'`
     ).join(',\n');
 
+    const bgColorHex = tailwindColors[backgroundColor] || '#0f172a';
+
     return `import React from 'react';
 
 const AnimatedBackground = () => {
   return (
-    <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-900">
+    <div className="fixed inset-0 -z-10 overflow-hidden" style={{ backgroundColor: '${bgColorHex}' }}>
       <div 
         className="relative h-full w-full"
         style={{
@@ -663,6 +861,9 @@ export default AnimatedBackground;`;
       const newPositions = [];
       const newVelocities = [];
       const newDeformations = [];
+      const newInitialPositions = [];
+      const newStartSizes = [];
+      const newFinalSizes = [];
       
       for (let i = 0; i < blobCount; i++) {
         const angle = (i * 2 * Math.PI) / blobCount;
@@ -681,21 +882,105 @@ export default AnimatedBackground;`;
           borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%',
           scale: 1
         });
+        // Default values for static mode
+        newInitialPositions.push({ x: 0, y: 100 });
+        newStartSizes.push(blobSize);
+        // Set default final sizes: blob-1: 60rem, blob-2: 80rem, blob-3: 100rem
+        if (i === 0) {
+          newFinalSizes.push(60);
+        } else if (i === 1) {
+          newFinalSizes.push(80);
+        } else if (i === 2) {
+          newFinalSizes.push(100);
+        } else {
+          newFinalSizes.push(blobSize);
+        }
       }
       
       setBlobPositions(newPositions);
       setBlobVelocities(newVelocities);
       setBlobDeformations(newDeformations);
+      setBlobInitialPositions(newInitialPositions);
+      setBlobStartSizes(newStartSizes);
+      setBlobFinalSizes(newFinalSizes);
     }
   }, [blobCount]);
 
+  // Update animation time for size animation (only for animated mode)
+  useEffect(() => {
+    if (gradientType !== 'blobs' || !blobsAnimated) return;
+    
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      // Calculate progress from 0 to 1 based on elapsed time and global speed
+      // This gives us a value that goes from 0 to 1 over globalAnimationSpeedMs milliseconds
+      const progress = (elapsed % globalAnimationSpeedMs) / globalAnimationSpeedMs;
+      // Store both linear progress (0-1) and time for breathing animation
+      animationTimeRef.current = progress;
+    }, 16);
+    
+    return () => clearInterval(interval);
+  }, [gradientType, globalAnimationSpeedMs, blobsAnimated]);
+
+  // Handle animate checkbox toggle
+  useEffect(() => {
+    if (animateSize && !blobsAnimated) {
+      setSizeAnimationStartTime(Date.now());
+    } else {
+      setSizeAnimationStartTime(null);
+    }
+  }, [animateSize, blobsAnimated]);
+
+  // Initialize defaults when switching to static mode
+  useEffect(() => {
+    if (!blobsAnimated && blobCount > 0) {
+      // Check if we need to set defaults (only if positions are at default 0,0)
+      const needsDefaults = blobInitialPositions.length === 0 || 
+        blobInitialPositions.every(pos => pos.x === 0 && pos.y === 0);
+      
+      if (needsDefaults) {
+        // Set default initial positions (0% x, -100% y)
+        const defaultPositions = [];
+        const defaultFinalSizes = [];
+        for (let i = 0; i < blobCount; i++) {
+          defaultPositions.push({ x: 0, y: 100 });
+          // Set default final sizes: blob-1: 60rem, blob-2: 80rem, blob-3: 100rem
+          if (i === 0) {
+            defaultFinalSizes.push(60);
+          } else if (i === 1) {
+            defaultFinalSizes.push(80);
+          } else if (i === 2) {
+            defaultFinalSizes.push(100);
+          } else {
+            defaultFinalSizes.push(blobFinalSizes[i] !== undefined ? blobFinalSizes[i] : blobSize);
+          }
+        }
+        setBlobInitialPositions(defaultPositions);
+        // Only update final sizes if they're not already set
+        if (blobFinalSizes.length === 0 || blobFinalSizes.every(size => size === blobSize)) {
+          setBlobFinalSizes(defaultFinalSizes);
+        }
+      }
+    }
+  }, [blobsAnimated, blobCount, blobInitialPositions, blobFinalSizes, blobSize]);
+
+  // Force re-render for size animation in static mode
+  const [, setAnimationTick] = useState(0);
+  useEffect(() => {
+    if (animateSize && !blobsAnimated && sizeAnimationStartTime !== null) {
+      const interval = setInterval(() => {
+        setAnimationTick(prev => prev + 1);
+      }, 16); // ~60fps
+      return () => clearInterval(interval);
+    }
+  }, [animateSize, blobsAnimated, sizeAnimationStartTime]);
+
   // Animate blobs with collision detection and deformation
   useEffect(() => {
-    if (gradientType !== 'blobs' || blobPositions.length === 0) return;
+    if (gradientType !== 'blobs' || blobPositions.length === 0 || !blobsAnimated) return;
 
     const animate = () => {
-      // Update animation time for size oscillation
-      animationTimeRef.current += (globalScaleSpeed / 100) * 0.01;
       
       setBlobPositions(prevPositions => {
         const newPositions = prevPositions.map(p => ({ ...p }));
@@ -857,7 +1142,7 @@ export default AnimatedBackground;`;
   return (
     <div className="min-h-screen relative overflow-hidden">
       {/* Animated Background - matching AnimatedBackground.jsx */}
-      <div className="fixed inset-0 -z-10 overflow-hidden bg-slate-900">
+      <div className="fixed inset-0 -z-10 overflow-hidden" style={{ backgroundColor: tailwindColors[backgroundColor] || '#0f172a' }}>
         <div 
           className="relative h-full w-full"
           style={{
@@ -877,8 +1162,9 @@ export default AnimatedBackground;`;
           
           {/* Blobs or Mesh Gradient */}
           {gradientType === 'blobs' ? (
-            // Blobs - JavaScript-controlled with collision detection
-            blobColors.slice(0, blobCount).map((gradient, index) => {
+            // Blobs - Reverse order so blob-1 is on top
+            blobColors.slice(0, blobCount).slice().reverse().map((gradient, reversedIndex) => {
+              const index = blobCount - 1 - reversedIndex; // Convert back to original index
               const [from, via, to] = gradient;
               
               // Convert Tailwind colors to hex for inline gradient
@@ -889,20 +1175,150 @@ export default AnimatedBackground;`;
               const position = blobPositions[index] || { x: 50, y: 50, z: 1 };
               const deformation = blobDeformations[index] || { borderRadius: '50% 50% 50% 50% / 50% 50% 50% 50%', scale: 1 };
               
+              // Get initial position if set
+              const initialPos = blobInitialPositions[index] || { x: 0, y: 0 };
+              const finalSize = blobFinalSizes[index] !== undefined ? blobFinalSizes[index] : blobSize;
+              
+              let currentSize = finalSize;
+              let borderRadius = '50% 50% 50% 50% / 50% 50% 50% 50%';
+              
+              if (blobsAnimated) {
+                // Animated mode - use existing animation logic
+                const startSize = blobStartSizes[index] !== undefined ? blobStartSizes[index] : blobSize;
+                const phaseOffset = (index * Math.PI * 2) / blobCount;
+                const linearProgress = animationTimeRef.current;
+                const easeInOutSine = (t) => -(Math.cos(Math.PI * t) - 1) / 2;
+                const easedProgress = easeInOutSine(linearProgress);
+                
+                if (finalSize !== startSize) {
+                  const baseSize = startSize + (finalSize - startSize) * easedProgress;
+                  
+                  if (linearProgress >= 0.95 || linearProgress < 0.05) {
+                    const breathingTime = Date.now() / 1000;
+                    const breathingPhase = breathingTime * 2 + phaseOffset;
+                    const breathingAmount = 0.02 + 0.03 * Math.sin(breathingPhase);
+                    currentSize = finalSize * (1 + breathingAmount);
+                    
+                    const deformPhase = breathingTime * 1.5 + phaseOffset;
+                    const deform1 = 48 + 2 * Math.sin(deformPhase);
+                    const deform2 = 52 - 2 * Math.sin(deformPhase);
+                    const deform3 = 50 + 1.5 * Math.cos(deformPhase);
+                    const deform4 = 50 - 1.5 * Math.cos(deformPhase);
+                    borderRadius = `${deform1}% ${deform2}% ${deform3}% ${deform4}% / ${deform3}% ${deform4}% ${deform1}% ${deform2}%`;
+                  } else {
+                    currentSize = baseSize;
+                  }
+                } else if (startSize === finalSize && finalSize > 0) {
+                  const breathingTime = Date.now() / 1000;
+                  const breathingPhase = breathingTime * 2 + phaseOffset;
+                  const breathingAmount = 0.02 + 0.03 * Math.sin(breathingPhase);
+                  currentSize = startSize * (1 + breathingAmount);
+                  
+                  const deformPhase = breathingTime * 1.5 + phaseOffset;
+                  const deform1 = 48 + 2 * Math.sin(deformPhase);
+                  const deform2 = 52 - 2 * Math.sin(deformPhase);
+                  const deform3 = 50 + 1.5 * Math.cos(deformPhase);
+                  const deform4 = 50 - 1.5 * Math.cos(deformPhase);
+                  borderRadius = `${deform1}% ${deform2}% ${deform3}% ${deform4}% / ${deform3}% ${deform4}% ${deform1}% ${deform2}%`;
+                }
+              } else {
+                // Static mode - completely static unless animate checkbox is checked
+                if (animateSize && sizeAnimationStartTime !== null) {
+                  const elapsed = Date.now() - sizeAnimationStartTime;
+                  const totalProgress = Math.min(1, elapsed / sizeAnimationTimeMs);
+                  
+                  if (staggeredAnimation) {
+                    // Staggered animation: blobs grow in phases
+                    // Phase 0: All blobs grow to blob-1's size simultaneously
+                    // Phase 1: Blob-2 and blob-3 (index >= 1) grow to blob-2's size (blob-1 stays at blob-1's size)
+                    // Phase 2: Only blob-3 (index >= 2) grows to blob-3's size (blob-1 and blob-2 stay at their sizes)
+                    // etc.
+                    
+                    // Get all blob sizes
+                    const blobSizes = [];
+                    for (let i = 0; i < blobCount; i++) {
+                      blobSizes.push(blobFinalSizes[i] !== undefined ? blobFinalSizes[i] : blobSize);
+                    }
+                    
+                    // Each phase takes equal time (1/blobCount)
+                    const phaseDuration = 1 / blobCount;
+                    
+                    // Determine which phase we're currently in
+                    const currentPhase = Math.min(Math.floor(totalProgress / phaseDuration), blobCount - 1);
+                    const phaseProgress = Math.min(1, (totalProgress % phaseDuration) / phaseDuration);
+                    
+                    // Handle case where animation is complete (totalProgress >= 1)
+                    if (totalProgress >= 1) {
+                      // All blobs have reached their final sizes
+                      currentSize = blobSizes[index];
+                    } else if (index < currentPhase) {
+                      // This blob has already completed its animation - use its final size
+                      currentSize = blobSizes[index];
+                    } else if (index >= currentPhase) {
+                      // Blobs with index >= currentPhase are animating in this phase
+                      if (currentPhase === 0) {
+                        // Phase 0: All blobs grow to blob-1's size simultaneously
+                        currentSize = blobSizes[0] * phaseProgress;
+                      } else {
+                        // Phase i: Blobs with index >= i grow from blob-(i-1)'s size to blob-i's size
+                        // Blobs with index < i stay at their final size (already handled above)
+                        const startSize = blobSizes[currentPhase - 1];
+                        const endSize = blobSizes[currentPhase];
+                        currentSize = startSize + (endSize - startSize) * phaseProgress;
+                      }
+                    }
+                    
+                    // Add breathing effect when animate is checked (+/- 2rem jitter)
+                    if (animateSize && currentSize > 0) {
+                      const breathingTime = Date.now() / 1000;
+                      const breathingPhase = breathingTime * 2 + (index * Math.PI * 2) / blobCount;
+                      const breathingAmount = 2 * Math.sin(breathingPhase); // +/- 2rem
+                      currentSize = Math.max(0, currentSize + breathingAmount);
+                    }
+                  } else {
+                    // Simultaneous animation: all blobs grow at the same rate
+                    currentSize = finalSize * totalProgress;
+                    
+                    // Add breathing effect when animate is checked (+/- 2rem jitter)
+                    if (animateSize && currentSize > 0) {
+                      const breathingTime = Date.now() / 1000;
+                      const breathingPhase = breathingTime * 2 + (index * Math.PI * 2) / blobCount;
+                      const breathingAmount = 2 * Math.sin(breathingPhase); // +/- 2rem
+                      currentSize = Math.max(0, currentSize + breathingAmount);
+                    }
+                  }
+                } else {
+                  // Completely static - use final size directly
+                  currentSize = finalSize;
+                  
+                  // Add breathing effect when animate is checked (+/- 2rem jitter)
+                  if (animateSize && currentSize > 0) {
+                    const breathingTime = Date.now() / 1000;
+                    const breathingPhase = breathingTime * 2 + (index * Math.PI * 2) / blobCount;
+                    const breathingAmount = 2 * Math.sin(breathingPhase); // +/- 2rem
+                    currentSize = Math.max(0, currentSize + breathingAmount);
+                  }
+                }
+              }
+              
+              // Use initial position if static, otherwise use animated position
+              const displayX = blobsAnimated ? position.x : (50 + (initialPos.x / 100) * 50);
+              const displayY = blobsAnimated ? position.y : (50 + (initialPos.y / 100) * 50);
+              
               return (
                 <div
                   key={index}
                   className="absolute blur-[120px]"
                   style={{
-                    left: `${position.x}%`,
-                    top: `${position.y}%`,
-                    transform: `translate(-50%, -50%) scale(${position.z * deformation.scale})`,
-                    width: `${blobSize}rem`,
-                    height: `${blobSize}rem`,
+                    left: `${displayX}%`,
+                    top: `${displayY}%`,
+                    transform: `translate(-50%, -50%) scale(${blobsAnimated ? position.z * deformation.scale : 1})`,
+                    width: `${currentSize}rem`,
+                    height: `${currentSize}rem`,
                     background: `radial-gradient(circle, ${fromHex} 0%, ${viaHex} 50%, ${toHex} 100%)`,
                     opacity: blobOpacity / 100,
-                    borderRadius: deformation.borderRadius,
-                    transition: 'border-radius 0.1s ease-out, transform 0.1s ease-out'
+                    borderRadius: blobsAnimated ? deformation.borderRadius : borderRadius,
+                    transition: blobsAnimated ? 'border-radius 0.1s ease-out, transform 0.1s ease-out' : 'none'
                   }}
                 ></div>
               );
@@ -980,36 +1396,154 @@ export default AnimatedBackground;`;
         </div>
       )}
 
+      {/* UI Toggle Button */}
+      {!uiVisible && (
+        <button
+          onClick={() => setUiVisible(true)}
+          className="fixed top-4 left-4 z-50 p-3 bg-white/10 backdrop-blur-sm hover:bg-white/20 text-white rounded-lg border border-white/20 transition-all duration-300"
+          title="Show UI"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+
           {/* Controls Panel */}
+      {uiVisible && (
           <div className="relative z-10 min-h-screen flex">
-            <div className="w-96 p-6 overflow-y-auto bg-white/5 backdrop-blur-sm border-r border-white/10">
-              <h1 className="text-3xl font-bold text-white mb-6 drop-shadow-lg">
+          <div className={`w-80 p-4 overflow-y-auto backdrop-blur-sm border-r transition-colors ${
+            isLightBackground 
+              ? 'bg-gray-900/95 border-gray-700' 
+              : 'bg-white/5 border-white/10'
+          }`}>
+            <div className="flex items-center justify-between mb-4">
+              <h1 className={`text-xl font-bold drop-shadow-lg ${
+                isLightBackground ? 'text-gray-100' : 'text-white'
+              }`}>
                 Gradient Builder
               </h1>
+              <button
+                onClick={() => setUiVisible(false)}
+                className={`p-1 transition-colors ${
+                  isLightBackground ? 'text-gray-300 hover:text-gray-100' : 'text-white/70 hover:text-white'
+                }`}
+                title="Hide UI"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
 
-          <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl space-y-6">
-            {/* Gradient Type Toggle */}
+          <div className={`backdrop-blur-md rounded-lg p-4 border shadow-xl space-y-4 text-sm transition-colors ${
+            isLightBackground 
+              ? 'bg-gray-800/90 border-gray-700' 
+              : 'bg-white/10 border-white/20'
+          }`}>
+            {/* Blob Animation Toggle */}
             <div>
-              <label className="block text-white font-medium mb-3">
-                Gradient Type
+              <label className="block text-white font-medium mb-2 text-xs">
+                Blob Animation
               </label>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setGradientType('blobs')}
-                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                    gradientType === 'blobs'
+                  onClick={() => setBlobsAnimated(true)}
+                  className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${
+                    blobsAnimated
                       ? 'bg-violet-600 text-white'
                       : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  Animated
+                </button>
+                <button
+                  onClick={() => setBlobsAnimated(false)}
+                  className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${
+                    !blobsAnimated
+                      ? 'bg-violet-600 text-white'
+                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  Static
+                </button>
+              </div>
+            </div>
+
+            {/* Background Color */}
+            <div className="relative color-picker-container">
+              <label className={`block font-medium mb-2 text-xs ${getTextColor()}`}>
+                Background Color
+              </label>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openColorPicker(null, 'background');
+                }}
+                className={`w-full px-2 py-1.5 ${getBgColor()} ${getBorderColor()} rounded ${getTextColor()} text-xs flex items-center justify-between hover:${isLightBackground ? 'bg-gray-700/90' : 'bg-white/20'} transition-colors`}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-4 h-4 rounded border border-white/30"
+                    style={{ backgroundColor: tailwindColors[backgroundColor] || '#0f172a' }}
+                  />
+                  <span>{backgroundColor}</span>
+                </div>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {colorPickerOpen['null-background'] && (
+                <div className="absolute z-50 mt-1 bg-gray-900 border border-white/20 rounded-lg shadow-xl p-3 max-h-96 overflow-y-auto w-full" onClick={(e) => e.stopPropagation()}>
+                  <div className="space-y-2">
+                    {colorGroups.map(group => (
+                      <div key={group}>
+                        <div className="text-white/60 text-xs mb-1 font-medium capitalize">{group}</div>
+                        <div className="grid grid-cols-8 gap-1">
+                          {groupedColors[group].map(color => (
+                            <button
+                              key={color}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                selectColor(color);
+                              }}
+                              className={`w-6 h-6 rounded border-2 transition-all ${
+                                backgroundColor === color ? 'border-white scale-110' : 'border-white/20 hover:border-white/50'
+                              }`}
+                              style={{ backgroundColor: tailwindColors[color] }}
+                              title={color}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Gradient Type Toggle */}
+            <div>
+              <label className={`block font-medium mb-2 text-xs ${getTextColor()}`}>
+                Gradient Type
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setGradientType('blobs')}
+                  className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${
+                    gradientType === 'blobs'
+                      ? 'bg-violet-600 text-white'
+                      : `${getBgColor()} ${getTextColor(0.7)} hover:${isLightBackground ? 'bg-gray-700/90' : 'bg-white/20'}`
                   }`}
                 >
                   Blobs
                 </button>
                 <button
                   onClick={() => setGradientType('mesh')}
-                  className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
+                  className={`flex-1 px-3 py-1.5 rounded text-xs font-medium transition-all duration-300 ${
                     gradientType === 'mesh'
                       ? 'bg-violet-600 text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                      : `${getBgColor()} ${getTextColor(0.7)} hover:${isLightBackground ? 'bg-gray-700/90' : 'bg-white/20'}`
                   }`}
                 >
                   Mesh
@@ -1017,28 +1551,9 @@ export default AnimatedBackground;`;
               </div>
             </div>
 
-            {/* Import Code */}
-            <div className="space-y-2">
-              <button
-                onClick={() => setShowImportModal(true)}
-                className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-all duration-300"
-              >
-                Import React Code
-              </button>
-              <label className="block w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-all duration-300 text-center cursor-pointer">
-                Import PNG Logo
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageImport}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
             {/* Blob Count */}
             <div>
-              <label className="block text-white font-medium mb-2">
+              <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
                 Number of Blobs: {blobCount}
               </label>
               <input
@@ -1051,116 +1566,9 @@ export default AnimatedBackground;`;
               />
             </div>
 
-            {/* Blob Size */}
-            <div>
-              <label className="block text-white font-medium mb-2">
-                Blob Size: {blobSize}rem
-              </label>
-              <input
-                type="range"
-                min="20"
-                max="80"
-                value={blobSize}
-                onChange={(e) => setBlobSize(parseInt(e.target.value))}
-                className="w-full"
-              />
-            </div>
-
-            {/* Global Animation Speeds */}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-white font-medium mb-2">
-                  Global Movement Speed: {globalMovementSpeed}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={globalMovementSpeed}
-                  onChange={(e) => setGlobalMovementSpeed(parseInt(e.target.value))}
-                  className="w-full"
-                />
-                <p className="text-white/60 text-xs mt-1">Controls how fast blobs move</p>
-              </div>
-              <div>
-                <label className="block text-white font-medium mb-2">
-                  Global Scale Animation Speed: {globalScaleSpeed}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={globalScaleSpeed}
-                  onChange={(e) => setGlobalScaleSpeed(parseInt(e.target.value))}
-                  className="w-full"
-                />
-                <p className="text-white/60 text-xs mt-1">Controls how fast blobs pulse (80%-110% size)</p>
-              </div>
-            </div>
-
-            {/* Blob Movement Controls (X, Y, Z) */}
-            <div>
-              <label className="block text-white font-medium mb-3">
-                Blob Movement Controls
-              </label>
-              <div className="space-y-4">
-                {blobVelocities.slice(0, blobCount).map((velocity, index) => (
-                  <div key={index} className="bg-white/5 rounded-lg p-3 space-y-2">
-                    <label className="block text-white/90 text-sm font-medium mb-2">
-                      Blob {index + 1}
-                    </label>
-                    <div className="space-y-2">
-                      <div>
-                        <label className="block text-white/70 text-xs mb-1">
-                          X Velocity: {velocity.vx?.toFixed(2) || 0}
-                        </label>
-                        <input
-                          type="range"
-                          min="-1"
-                          max="1"
-                          step="0.01"
-                          value={velocity.vx || 0}
-                          onChange={(e) => updateBlobVelocity(index, 'vx', parseFloat(e.target.value))}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-white/70 text-xs mb-1">
-                          Y Velocity: {velocity.vy?.toFixed(2) || 0}
-                        </label>
-                        <input
-                          type="range"
-                          min="-1"
-                          max="1"
-                          step="0.01"
-                          value={velocity.vy || 0}
-                          onChange={(e) => updateBlobVelocity(index, 'vy', parseFloat(e.target.value))}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-white/70 text-xs mb-1">
-                          Z Velocity (Scale): {velocity.vz?.toFixed(3) || 0}
-                        </label>
-                        <input
-                          type="range"
-                          min="-0.05"
-                          max="0.05"
-                          step="0.001"
-                          value={velocity.vz || 0}
-                          onChange={(e) => updateBlobVelocity(index, 'vz', parseFloat(e.target.value))}
-                          className="w-full"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* Blob Opacity */}
             <div>
-              <label className="block text-white font-medium mb-2">
+              <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
                 Blob Opacity: {blobOpacity}%
               </label>
               <input
@@ -1173,73 +1581,504 @@ export default AnimatedBackground;`;
               />
             </div>
 
-            {/* Randomize Animations */}
+            {/* Global Animation Controls */}
+            {blobsAnimated && (
+              <div className="space-y-2">
+              <div>
+                  <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
+                    Size Animation Speed (ms): {globalAnimationSpeedMs}
+                  </label>
+                  <input
+                    type="number"
+                    min="100"
+                    max="30000"
+                    step="100"
+                    value={globalAnimationSpeedMs}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value);
+                      if (!isNaN(value) && value >= 100 && value <= 30000) {
+                        setGlobalAnimationSpeedMs(value);
+                      }
+                    }}
+                    className={`w-full px-2 py-1.5 ${getBgColor()} ${getBorderColor()} rounded ${getTextColor()} text-xs focus:outline-none focus:border-violet-500`}
+                    placeholder="3000"
+                  />
+                  <p className={`${getTextColor(0.6)} text-xs mt-1`}>Time to animate from start to final size (0-100%)</p>
+                </div>
+                
+                <div>
+                  <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
+                    Animation Duration: {globalAnimationDuration}s
+                  </label>
+                  <input
+                    type="range"
+                    min="5"
+                    max="120"
+                    step="1"
+                    value={globalAnimationDuration}
+                    onChange={(e) => updateGlobalAnimationDuration(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
+                    Movement Speed: {globalMovementSpeed}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={globalMovementSpeed}
+                  onChange={(e) => setGlobalMovementSpeed(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                  <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
+                    Scale Speed: {globalScaleSpeed}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="200"
+                  value={globalScaleSpeed}
+                  onChange={(e) => setGlobalScaleSpeed(parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+                <button
+                  onClick={resetAnimation}
+                  className="w-full px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded transition-all duration-300"
+                >
+                  Reset Animation
+                </button>
+            </div>
+            )}
+
+            {/* Blob Accordions */}
+            <div className="space-y-2">
+              <label className={`block font-medium text-xs ${getTextColor()}`}>
+                Blob Settings
+              </label>
+              {blobColors.slice(0, blobCount).map((gradient, index) => {
+                const gradientColors = Array.isArray(gradient) ? gradient : [gradient, gradient, gradient];
+                const isExpanded = expandedBlobs[index] || false;
+                const initialPos = blobInitialPositions[index] || { x: 0, y: 0 };
+                const startSize = blobStartSizes[index] !== undefined ? blobStartSizes[index] : blobSize;
+                const finalSize = blobFinalSizes[index] !== undefined ? blobFinalSizes[index] : blobSize;
+                const velocity = blobVelocities[index] || { vx: 0, vy: 0, vz: 0 };
+                
+                return (
+                  <div key={index} className="bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+                    <button
+                      onClick={() => toggleBlobAccordion(index)}
+                      className="w-full px-3 py-2 flex items-center justify-between text-white hover:bg-white/5 transition-colors"
+                    >
+                      <span className="text-xs font-medium">Blob {index + 1}</span>
+                      <svg
+                        className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    
+                    {isExpanded && (
+                      <div className="px-3 py-2 space-y-3 border-t border-white/10">
+                        {/* Colors */}
+                        <div>
+                          <label className="block text-white/70 text-xs mb-1.5 font-medium">Colors</label>
+                          <div className="space-y-1.5">
+                            <div className="relative color-picker-container">
+                              <label className="block text-white/60 text-xs mb-1">From</label>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openColorPicker(index, 'from');
+                                }}
+                                className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-xs flex items-center justify-between hover:bg-white/20 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-4 h-4 rounded border border-white/30"
+                                    style={{ backgroundColor: tailwindColors[gradientColors[0]] || '#000' }}
+                                  />
+                                  <span>{gradientColors[0] || 'Select color'}</span>
+                                </div>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {colorPickerOpen[`${index}-from`] && (
+                                <div className="absolute z-50 mt-1 bg-gray-900 border border-white/20 rounded-lg shadow-xl p-3 max-h-96 overflow-y-auto w-full left-0" onClick={(e) => e.stopPropagation()}>
+                    <div className="space-y-2">
+                                    {colorGroups.map(group => (
+                                      <div key={group}>
+                                        <div className="text-white/60 text-xs mb-1 font-medium capitalize">{group}</div>
+                                        <div className="grid grid-cols-8 gap-1">
+                                          {groupedColors[group].map(color => (
+                                            <button
+                                              key={color}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                selectColor(color);
+                                              }}
+                                              className={`w-6 h-6 rounded border-2 transition-all ${
+                                                gradientColors[0] === color ? 'border-white scale-110' : 'border-white/20 hover:border-white/50'
+                                              }`}
+                                              style={{ backgroundColor: tailwindColors[color] }}
+                                              title={color}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="relative color-picker-container">
+                              <label className="block text-white/60 text-xs mb-1">Via</label>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openColorPicker(index, 'via');
+                                }}
+                                className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-xs flex items-center justify-between hover:bg-white/20 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-4 h-4 rounded border border-white/30"
+                                    style={{ backgroundColor: tailwindColors[gradientColors[1]] || '#000' }}
+                                  />
+                                  <span>{gradientColors[1] || 'Select color'}</span>
+                                </div>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {colorPickerOpen[`${index}-via`] && (
+                                <div className="absolute z-50 mt-1 bg-gray-900 border border-white/20 rounded-lg shadow-xl p-3 max-h-96 overflow-y-auto w-full left-0" onClick={(e) => e.stopPropagation()}>
+                                  <div className="space-y-2">
+                                    {colorGroups.map(group => (
+                                      <div key={group}>
+                                        <div className="text-white/60 text-xs mb-1 font-medium capitalize">{group}</div>
+                                        <div className="grid grid-cols-8 gap-1">
+                                          {groupedColors[group].map(color => (
+                                            <button
+                                              key={color}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                selectColor(color);
+                                              }}
+                                              className={`w-6 h-6 rounded border-2 transition-all ${
+                                                gradientColors[1] === color ? 'border-white scale-110' : 'border-white/20 hover:border-white/50'
+                                              }`}
+                                              style={{ backgroundColor: tailwindColors[color] }}
+                                              title={color}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="relative color-picker-container">
+                              <label className="block text-white/60 text-xs mb-1">To</label>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openColorPicker(index, 'to');
+                                }}
+                                className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-xs flex items-center justify-between hover:bg-white/20 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-4 h-4 rounded border border-white/30"
+                                    style={{ backgroundColor: tailwindColors[gradientColors[2]] || '#000' }}
+                                  />
+                                  <span>{gradientColors[2] || 'Select color'}</span>
+                                </div>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </button>
+                              {colorPickerOpen[`${index}-to`] && (
+                                <div className="absolute z-50 mt-1 bg-gray-900 border border-white/20 rounded-lg shadow-xl p-3 max-h-96 overflow-y-auto w-full left-0" onClick={(e) => e.stopPropagation()}>
+                                  <div className="space-y-2">
+                                    {colorGroups.map(group => (
+                                      <div key={group}>
+                                        <div className="text-white/60 text-xs mb-1 font-medium capitalize">{group}</div>
+                                        <div className="grid grid-cols-8 gap-1">
+                                          {groupedColors[group].map(color => (
+                                            <button
+                                              key={color}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                selectColor(color);
+                                              }}
+                                              className={`w-6 h-6 rounded border-2 transition-all ${
+                                                gradientColors[2] === color ? 'border-white scale-110' : 'border-white/20 hover:border-white/50'
+                                              }`}
+                                              style={{ backgroundColor: tailwindColors[color] }}
+                                              title={color}
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Position */}
+                      <div>
+                          <label className="block text-white/70 text-xs mb-1.5 font-medium">Position</label>
+                          <div className="space-y-1.5">
+                            <div>
+                              <label className="block text-white/60 text-xs mb-1">
+                                X: {initialPos.x.toFixed(0)}%
+                        </label>
+                        <input
+                          type="range"
+                                min="-100"
+                                max="100"
+                                step="1"
+                                value={initialPos.x}
+                                onChange={(e) => updateBlobInitialPosition(index, 'x', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                              <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                Y: {initialPos.y.toFixed(0)}%
+                        </label>
+                        <input
+                          type="range"
+                                min="-100"
+                                max="100"
+                                step="1"
+                                value={initialPos.y}
+                                onChange={(e) => updateBlobInitialPosition(index, 'y', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                          </div>
+                        </div>
+
+                        {/* Size */}
+                      <div>
+                          <label className={`block text-xs mb-1.5 font-medium ${getTextColor(0.7)}`}>Size</label>
+                          {blobsAnimated ? (
+                            <div className="space-y-1.5">
+                              <div>
+                                <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                  Start: {blobStartSizes[index] !== undefined ? blobStartSizes[index] : blobSize}rem
+                        </label>
+                        <input
+                          type="range"
+                                  min="0"
+                                  max="200"
+                                  step="1"
+                                  value={blobStartSizes[index] !== undefined ? blobStartSizes[index] : blobSize}
+                                  onChange={(e) => updateBlobStartSize(index, parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                      </div>
+                              <div>
+                                <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                  Final: {finalSize}rem
+                                </label>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="200"
+                                  step="1"
+                                  value={finalSize}
+                                  onChange={(e) => updateBlobFinalSize(index, parseFloat(e.target.value))}
+                                  className="w-full"
+                                />
+                    </div>
+                  </div>
+                          ) : (
             <div>
-              <button
-                onClick={randomizeBlobAnimations}
-                className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-all duration-300"
-              >
-                Randomize Blob Movements
-              </button>
+                              <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                Size: {finalSize}rem
+              </label>
+              <input
+                type="range"
+                min="0"
+                                max="200"
+                                step="1"
+                                value={finalSize}
+                                onChange={(e) => updateBlobFinalSize(index, parseFloat(e.target.value))}
+                className="w-full"
+              />
+            </div>
+                          )}
             </div>
 
-            {/* Blob Colors - 3-step gradients */}
+                        {/* Speed (only if animated) */}
+                        {blobsAnimated && (
             <div>
-              <label className="block text-white font-medium mb-3">
-                Blob Gradients (Tailwind)
-              </label>
-              <div className="space-y-4">
-                {blobColors.slice(0, blobCount).map((gradient, index) => {
-                  const gradientColors = Array.isArray(gradient) ? gradient : [gradient, gradient, gradient];
-                  return (
-                    <div key={index} className="space-y-2">
-                      <label className="block text-white text-sm font-medium">
-                        Blob {index + 1}
-                      </label>
-                      <div className="space-y-2">
+                            <label className={`block text-xs mb-1.5 font-medium ${getTextColor(0.7)}`}>Speed</label>
                         <div>
-                          <label className="block text-white/70 text-xs mb-1">From</label>
+                              <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                Animation Speed: {animationSpeeds[index] || globalAnimationDuration}s
+                              </label>
                           <input
-                            type="text"
-                            value={gradientColors[0] || ''}
-                            onChange={(e) => updateBlobGradientColor(index, 0, e.target.value)}
-                            placeholder="e.g., emerald-400"
-                            className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-sm"
+                                type="range"
+                                min="5"
+                                max="120"
+                                step="1"
+                                value={animationSpeeds[index] || globalAnimationDuration}
+                                onChange={(e) => updateAnimationSpeed(index, parseInt(e.target.value))}
+                                className="w-full"
+                          />
+                        </div>
+                            <div className="space-y-1.5 mt-2">
+                        <div>
+                                <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                  X Velocity: {velocity.vx?.toFixed(2) || 0}
+                                </label>
+                          <input
+                                  type="range"
+                                  min="-1"
+                                  max="1"
+                                  step="0.01"
+                                  value={velocity.vx || 0}
+                                  onChange={(e) => updateBlobVelocity(index, 'vx', parseFloat(e.target.value))}
+                                  className="w-full"
                           />
                         </div>
                         <div>
-                          <label className="block text-white/70 text-xs mb-1">Via</label>
+                                <label className={`block text-xs mb-1 ${getTextColor(0.6)}`}>
+                                  Y Velocity: {velocity.vy?.toFixed(2) || 0}
+                                </label>
                           <input
-                            type="text"
-                            value={gradientColors[1] || ''}
-                            onChange={(e) => updateBlobGradientColor(index, 1, e.target.value)}
-                            placeholder="e.g., emerald-600"
-                            className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-white/70 text-xs mb-1">To</label>
-                          <input
-                            type="text"
-                            value={gradientColors[2] || ''}
-                            onChange={(e) => updateBlobGradientColor(index, 2, e.target.value)}
-                            placeholder="e.g., emerald-400"
-                            className="w-full px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-sm"
+                                  type="range"
+                                  min="-1"
+                                  max="1"
+                                  step="0.01"
+                                  value={velocity.vy || 0}
+                                  onChange={(e) => updateBlobVelocity(index, 'vy', parseFloat(e.target.value))}
+                                  className="w-full"
                           />
                         </div>
                       </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     </div>
                   );
                 })}
               </div>
-              <p className="text-white/60 text-xs mt-2">Enter Tailwind color names for 3-step gradients (from-via-to)</p>
+
+            {/* Animate Checkbox (only for static mode) */}
+            {!blobsAnimated && (
+              <div className={`space-y-2 pt-2 border-t ${getBorderColor()}`}>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="animate-size"
+                    checked={animateSize}
+                    onChange={(e) => {
+                      setAnimateSize(e.target.checked);
+                      if (e.target.checked) {
+                        setSizeAnimationStartTime(Date.now());
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  <label htmlFor="animate-size" className={`text-xs font-medium cursor-pointer ${getTextColor()}`}>
+                    Animate
+                  </label>
+                </div>
+                {animateSize && (
+                  <>
+                    <div>
+                      <label className={`block font-medium mb-1 text-xs ${getTextColor()}`}>
+                        Animation Time (ms): {sizeAnimationTimeMs}
+                      </label>
+                      <input
+                        type="number"
+                        min="100"
+                        max="30000"
+                        step="100"
+                        value={sizeAnimationTimeMs}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          if (!isNaN(value) && value >= 100 && value <= 30000) {
+                            setSizeAnimationTimeMs(value);
+                            // Restart animation with new time
+                            setSizeAnimationStartTime(Date.now());
+                          }
+                        }}
+                        className={`w-full px-2 py-1.5 ${getBgColor()} ${getBorderColor()} rounded ${getTextColor()} text-xs focus:outline-none focus:border-violet-500`}
+                        placeholder="3000"
+                      />
+                      <p className={`${getTextColor(0.6)} text-xs mt-1`}>Time to animate from 0 to set size</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="staggered-animation"
+                        checked={staggeredAnimation}
+                        onChange={(e) => {
+                          setStaggeredAnimation(e.target.checked);
+                          // Restart animation when toggling
+                          if (animateSize) {
+                            setSizeAnimationStartTime(Date.now());
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      <label htmlFor="staggered-animation" className={`text-xs font-medium cursor-pointer ${getTextColor()}`}>
+                        Staggered Animation
+                      </label>
+                    </div>
+                    {staggeredAnimation && (
+                      <p className={`${getTextColor(0.6)} text-xs`}>
+                        Blobs grow in phases: all to blob-1 size, then blob-2+ to blob-2 size, then blob-3+ to blob-3 size, etc.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Import Code */}
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-all duration-300"
+              >
+                Import Code
+              </button>
+              <label className="block w-full px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-all duration-300 text-center cursor-pointer">
+                Import PNG
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageImport}
+                  className="hidden"
+                />
+              </label>
             </div>
 
             {/* Show Code Button */}
             <div>
               <button
                 onClick={() => setShowCodeModal(true)}
-                className="w-full px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-lg transition-all duration-300"
+                className="w-full px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded transition-all duration-300"
               >
                 Show React Code
               </button>
@@ -1250,6 +2089,7 @@ export default AnimatedBackground;`;
         {/* Preview Area - Right Side */}
         <div className="flex-1"></div>
       </div>
+      )}
 
       {/* Code Modal */}
       {showCodeModal && (
