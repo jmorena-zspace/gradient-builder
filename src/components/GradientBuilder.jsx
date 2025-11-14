@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import ContentContainer from './ContentContainer';
 
 // Tailwind color palette lookup table
 const tailwindColors = {
@@ -183,6 +184,14 @@ export default function GradientBuilder() {
   
   // Staggered animation mode (true = staggered, false = simultaneous)
   const [staggeredAnimation, setStaggeredAnimation] = useState(true);
+
+  // Simulate UI state
+  const [simulateUI, setSimulateUI] = useState(false);
+  const [simulateUIExpanded, setSimulateUIExpanded] = useState(false);
+  const [uiCardCount, setUiCardCount] = useState(3);
+  const [uiBackgroundOpacity, setUiBackgroundOpacity] = useState(85);
+  const [uiWidthPercentage, setUiWidthPercentage] = useState(90);
+  const [uiMaxWidth, setUiMaxWidth] = useState(1280);
 
   // Update individual gradient color in a blob (from, via, or to)
   const updateBlobGradientColor = (blobIndex, gradientIndex, color) => {
@@ -926,8 +935,8 @@ export default AnimatedBackground;`;
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       // Calculate progress from 0 to 1 based on elapsed time and global speed
-      // This gives us a value that goes from 0 to 1 over globalAnimationSpeedMs milliseconds
-      const progress = (elapsed % globalAnimationSpeedMs) / globalAnimationSpeedMs;
+      // Once it reaches 1, it stays at 1 (no looping)
+      const progress = Math.min(1, elapsed / globalAnimationSpeedMs);
       // Store both linear progress (0-1) and time for breathing animation
       animationTimeRef.current = progress;
     }, 16);
@@ -1203,9 +1212,10 @@ export default AnimatedBackground;`;
                 const easedProgress = easeInOutSine(linearProgress);
                 
                 if (finalSize !== startSize) {
-                  const baseSize = startSize + (finalSize - startSize) * easedProgress;
-                  
-                  if (linearProgress >= 0.95 || linearProgress < 0.05) {
+                  // Once animation completes (linearProgress >= 1), use final size
+                  if (linearProgress >= 1) {
+                    currentSize = finalSize;
+                    // Add breathing effect after reaching full size
                     const breathingTime = Date.now() / 1000;
                     const breathingPhase = breathingTime * 2 + phaseOffset;
                     const breathingAmount = 0.02 + 0.03 * Math.sin(breathingPhase);
@@ -1218,9 +1228,12 @@ export default AnimatedBackground;`;
                     const deform4 = 50 - 1.5 * Math.cos(deformPhase);
                     borderRadius = `${deform1}% ${deform2}% ${deform3}% ${deform4}% / ${deform3}% ${deform4}% ${deform1}% ${deform2}%`;
                   } else {
+                    // Still animating - grow from start to final size
+                    const baseSize = startSize + (finalSize - startSize) * easedProgress;
                     currentSize = baseSize;
                   }
                 } else if (startSize === finalSize && finalSize > 0) {
+                  // Same start and final size - always apply breathing
                   const breathingTime = Date.now() / 1000;
                   const breathingPhase = breathingTime * 2 + phaseOffset;
                   const breathingAmount = 0.02 + 0.03 * Math.sin(breathingPhase);
@@ -1317,10 +1330,25 @@ export default AnimatedBackground;`;
               const displayX = blobsAnimated ? position.x : (50 + (initialPos.x / 100) * 50);
               const displayY = blobsAnimated ? position.y : (50 + (initialPos.y / 100) * 50);
               
+              // Determine which borderRadius to use
+              let finalBorderRadius = borderRadius;
+              if (blobsAnimated) {
+                // In animated mode, use deformation.borderRadius if animation is still running
+                // Otherwise use the borderRadius we calculated (for breathing effect after completion)
+                const linearProgress = animationTimeRef.current;
+                if (linearProgress >= 1 && borderRadius !== '50% 50% 50% 50% / 50% 50% 50% 50%') {
+                  // Animation complete, use calculated borderRadius for breathing
+                  finalBorderRadius = borderRadius;
+                } else {
+                  // Still animating or no breathing, use deformation
+                  finalBorderRadius = deformation.borderRadius;
+                }
+              }
+              
               return (
                 <div
                   key={index}
-                  className="absolute blur-[120px]"
+                  className="absolute"
                   style={{
                     left: `${displayX}%`,
                     top: `${displayY}%`,
@@ -1329,7 +1357,8 @@ export default AnimatedBackground;`;
                     height: `${currentSize}rem`,
                     background: `radial-gradient(circle, ${fromHex} 0%, ${viaHex} 50%, ${toHex} 100%)`,
                     opacity: blobOpacity / 100,
-                    borderRadius: blobsAnimated ? deformation.borderRadius : borderRadius,
+                    borderRadius: finalBorderRadius,
+                    filter: 'blur(120px)',
                     transition: blobsAnimated ? 'border-radius 0.1s ease-out, transform 0.1s ease-out' : 'none'
                   }}
                 ></div>
@@ -1372,6 +1401,45 @@ export default AnimatedBackground;`;
           )}
         </div>
       </div>
+
+      {/* Simulate UI Container */}
+      {simulateUI && (
+        <div 
+          className="fixed inset-0 flex items-center justify-center z-20 pointer-events-none"
+          style={{
+            padding: '1rem'
+          }}
+        >
+          <div
+            className="w-full pointer-events-auto"
+            style={{
+              width: `${uiWidthPercentage}%`,
+              maxWidth: `${uiMaxWidth}px`
+            }}
+          >
+            <div
+              style={{
+                backgroundColor: `rgba(15, 23, 42, ${uiBackgroundOpacity / 100})`, // slate-900 with opacity
+                borderRadius: '1rem',
+                padding: '1rem',
+                minHeight: '100%'
+              }}
+            >
+              <ContentContainer
+                cards={Array.from({ length: uiCardCount }, (_, i) => ({
+                  title: `Card ${i + 1} Title`,
+                  subtitle: `Subtitle for card ${i + 1}`,
+                  badge: i % 2 === 0 ? "Lesson" : "Collection",
+                  tags: ["Tag 1", "Tag 2", "Tag 3"],
+                  extraTagsCount: 3
+                }))}
+                resultsCount={uiCardCount}
+                totalResults={108}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Imported PNG Image Overlay */}
       {importedImage && (
@@ -1423,7 +1491,7 @@ export default AnimatedBackground;`;
 
           {/* Controls Panel */}
       {uiVisible && (
-          <div className="relative z-10 min-h-screen flex">
+          <div className="relative z-40 min-h-screen flex">
           <div className={`w-80 p-4 overflow-y-auto backdrop-blur-sm border-r transition-colors ${
             isLightBackground 
               ? 'bg-gray-900/95 border-gray-700' 
@@ -2066,6 +2134,123 @@ export default AnimatedBackground;`;
                 )}
               </div>
             )}
+
+            {/* Simulate UI */}
+            <div className="space-y-2 pt-2">
+              <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden">
+                <button
+                  onClick={() => {
+                    const newValue = !simulateUI;
+                    setSimulateUI(newValue);
+                    if (newValue) {
+                      setSimulateUIExpanded(true);
+                    }
+                  }}
+                  className="w-full px-3 py-2 flex items-center justify-between hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={simulateUI}
+                      onChange={(e) => {
+                        setSimulateUI(e.target.checked);
+                        if (e.target.checked) {
+                          setSimulateUIExpanded(true);
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    <span className={`text-xs font-medium ${getTextColor()}`}>Simulate UI</span>
+                  </div>
+                  {simulateUI && (
+                    <svg
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSimulateUIExpanded(!simulateUIExpanded);
+                      }}
+                      className={`w-4 h-4 transition-transform cursor-pointer ${simulateUIExpanded ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  )}
+                </button>
+                
+                {simulateUI && simulateUIExpanded && (
+                  <div className="px-3 py-2 space-y-3 border-t border-white/10">
+                    {/* Amount of Cards */}
+                    <div>
+                      <label className={`block text-xs mb-1.5 font-medium ${getTextColor()}`}>
+                        Amount of Cards: {uiCardCount}
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max="10"
+                        value={uiCardCount}
+                        onChange={(e) => setUiCardCount(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Background Opacity */}
+                    <div>
+                      <label className={`block text-xs mb-1.5 font-medium ${getTextColor()}`}>
+                        Background Opacity: {uiBackgroundOpacity}%
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={uiBackgroundOpacity}
+                        onChange={(e) => setUiBackgroundOpacity(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                      <p className={`${getTextColor(0.6)} text-xs mt-1`}>Only affects container background</p>
+                    </div>
+
+                    {/* Width Percentage */}
+                    <div>
+                      <label className={`block text-xs mb-1.5 font-medium ${getTextColor()}`}>
+                        Width (% of viewport): {uiWidthPercentage}%
+                      </label>
+                      <input
+                        type="range"
+                        min="10"
+                        max="100"
+                        value={uiWidthPercentage}
+                        onChange={(e) => setUiWidthPercentage(parseInt(e.target.value))}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Max Width */}
+                    <div>
+                      <label className={`block text-xs mb-1.5 font-medium ${getTextColor()}`}>
+                        Max Width (px): {uiMaxWidth}
+                      </label>
+                      <input
+                        type="number"
+                        min="320"
+                        max="2560"
+                        step="10"
+                        value={uiMaxWidth}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value);
+                          if (!isNaN(value) && value >= 320 && value <= 2560) {
+                            setUiMaxWidth(value);
+                          }
+                        }}
+                        className={`w-full px-2 py-1.5 ${getBgColor()} ${getBorderColor()} rounded ${getTextColor()} text-xs focus:outline-none focus:border-violet-500`}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Import Code */}
             <div className="space-y-2 pt-2">
